@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+# Network Jobs suite installer (gstack-style).
+# Symlinks skills into the agent skills dir and creates ~/.network-jobs/.
+set -euo pipefail
+
+SUITE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DATA_HOME="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
+
+# Detect agent skills parent (Claude Code default; override with NETWORK_JOBS_SKILLS_DIR)
+SKILLS_PARENT="${NETWORK_JOBS_SKILLS_DIR:-}"
+if [[ -z "$SKILLS_PARENT" ]]; then
+  if [[ -d "$HOME/.claude/skills" ]]; then
+    SKILLS_PARENT="$HOME/.claude/skills"
+  elif [[ -d "$HOME/.agents/skills" ]]; then
+    SKILLS_PARENT="$HOME/.agents/skills"
+  else
+    SKILLS_PARENT="$HOME/.claude/skills"
+    mkdir -p "$SKILLS_PARENT"
+  fi
+fi
+
+SKILLS=(
+  network-jobs-setup
+  network-jobs-import
+  careers-discover
+  jobs-ingest
+  network-jobs
+  intro-email-generator
+)
+
+echo "==> Network Jobs setup"
+echo "    Suite:  $SUITE_ROOT"
+echo "    Data:   $DATA_HOME"
+echo "    Skills: $SKILLS_PARENT"
+echo
+
+# --- dependency checks ---
+missing=()
+for cmd in curl jq unzip; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    missing+=("$cmd")
+  fi
+done
+if ((${#missing[@]})); then
+  echo "ERROR: missing required tools: ${missing[*]}"
+  echo "Install them and re-run ./setup"
+  exit 1
+fi
+
+if command -v agent-browser >/dev/null 2>&1; then
+  echo "OK  agent-browser found (recommended for JS-heavy career sites)"
+else
+  echo "WARN agent-browser not found — careers-discover can still use curl/WebFetch;"
+  echo "     install agent-browser for SPA career pages: https://github.com/vercel-labs/agent-browser"
+fi
+echo
+
+# --- data dirs ---
+mkdir -p \
+  "$DATA_HOME/connections" \
+  "$DATA_HOME/companies" \
+  "$DATA_HOME/config" \
+  "$DATA_HOME/triage" \
+  "$DATA_HOME/corpus" \
+  "$DATA_HOME/logs"
+
+# Seed ignore lists from suite assets if user has none
+ASSET_DIR="$SUITE_ROOT/network-jobs-import/assets"
+for f in companies-to-ignore.json company-words-to-ignore.json company-overrides.json; do
+  if [[ ! -f "$DATA_HOME/config/$f" && -f "$ASSET_DIR/$f" ]]; then
+    cp "$ASSET_DIR/$f" "$DATA_HOME/config/$f"
+    echo "Seeded config/$f"
+  fi
+done
+
+# Profile stub
+if [[ ! -f "$DATA_HOME/profile.json" ]]; then
+  cat > "$DATA_HOME/profile.json" <<'EOF'
+{
+  "name": "",
+  "email": "",
+  "title": "",
+  "company": "",
+  "url": ""
+}
+EOF
+  echo "Created profile.json (fill via network-jobs-setup)"
+fi
+
+# Empty corpus manifest if missing
+if [[ ! -f "$DATA_HOME/corpus/manifest.json" ]]; then
+  cat > "$DATA_HOME/corpus/manifest.json" <<'EOF'
+{
+  "lastUpdated": null,
+  "totalJobs": 0,
+  "categories": {}
+}
+EOF
+fi
+
+# --- symlink skills ---
+# If suite is already installed AT $SKILLS_PARENT/network-jobs, link siblings next to it.
+# Otherwise link into SKILLS_PARENT from wherever the suite lives.
+mkdir -p "$SKILLS_PARENT"
+
+for skill in "${SKILLS[@]}"; do
+  src="$SUITE_ROOT/$skill"
+  dest="$SKILLS_PARENT/$skill"
+  if [[ ! -d "$src" ]]; then
+    echo "WARN missing skill dir: $src"
+    continue
+  fi
+  if [[ -L "$dest" ]]; then
+    rm -f "$dest"
+  elif [[ -d "$dest" && ! -L "$dest" ]]; then
+    # Already a real directory (e.g. suite cloned as ~/.claude/skills/network-jobs
+    # and skill is nested). Prefer nested path discovery; still create sibling link
+    # only if dest is not inside suite.
+    if [[ "$(cd "$dest" && pwd)" == "$(cd "$src" && pwd)" ]]; then
+      echo "OK  $skill (already at install path)"
+      continue
+    fi
+    echo "WARN $dest exists and is not a symlink — skipping (remove it to relink)"
+    continue
+  fi
+  # When suite lives at ~/.claude/skills/network-jobs, create sibling symlinks
+  ln -sfn "$src" "$dest"
+  echo "Linked $dest -> $src"
+done
+
+# --- CLAUDE.md snippet ---
+SNIPPET="$SUITE_ROOT/docs/CLAUDE.md.snippet"
+if [[ -f "$SNIPPET" ]]; then
+  echo
+  echo "==> Paste this into your project's CLAUDE.md (or ~/.claude/CLAUDE.md):"
+  echo "----"
+  cat "$SNIPPET"
+  echo "----"
+fi
+
+{
+  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) setup ok suite=$SUITE_ROOT data=$DATA_HOME skills=$SKILLS_PARENT"
+} >> "$DATA_HOME/logs/setup.log"
+
+echo
+echo "Done. Next: open Claude Code and run the network-jobs-setup skill."
+echo "Or: ask Claude to 'set up network jobs' / 'import my LinkedIn connections zip'."
