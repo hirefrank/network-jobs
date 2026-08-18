@@ -77,9 +77,14 @@ When the user does **not** specify location / mode / seniority / category / trac
 3. Honor `workModes`: if only `remote`, prefer `locationBucket=remote`; if `hybrid`/`onsite`, still include city buckets they listed.
 4. Honor `track` when filtering titles: `manager` → prefer Manager/Director/Head/EM/VP people-lead titles; `ic` → de-prioritize pure people-manager titles unless query asks; `either` → no track filter.
 5. Soft-filter with `locations`, `industries`, `companyStages`, `mustHaves`, `dealBreakers`, `notes`, `salaryMin` in judgment — do not invent salary on jobs that lack it.
-6. If the user query conflicts with prefs, **query wins**.
+6. **Former employers:** read `formerEmployers` + `formerEmployerPolicy`.
+   - `exclude` — omit those companies from default result sets (still show if the user named the company).
+   - `include` — treat like any other company.
+   - `ask` — if matches appear, list them separately and ask before emphasizing / expanding.
+   Match company names case-insensitively / lightly normalized (ignore Inc, LLC, etc.).
+7. If the user query conflicts with prefs, **query wins**.
 
-Mention once when defaults applied: e.g. `Using your prefs: remote + NYC, product, senior IC`.
+Mention once when defaults applied: e.g. `Using your prefs: remote + NYC, product, senior IC (excluding former employers)`.
 
 ### Pattern A: "Do I have connections at [Company]?"
 

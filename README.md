@@ -54,7 +54,7 @@ Daily use is **in the agent**. The CLI is for install, update, doctor, profile/r
 ## Tips
 
 - **Pipeline stop:** `careers-discover` only stages under `triage/`. Review, then explicitly ask to ingest before anything lands in the searchable corpus.
-- **Résumé + prefs:** `network-jobs profile import ~/resume.pdf`, then in your agent: “set up network jobs from my resume” — fills profile, then a **dynamic** prefs interview (remote/hybrid/onsite, location, IC vs manager, stage/domain, …) grounded in that background.
+- **Résumé + prefs:** `network-jobs profile import ~/resume.pdf`, then in your agent: “set up network jobs from my resume” — fills profile, then a **dynamic** prefs interview (remote/hybrid/onsite, location, IC vs manager, former employers include/exclude, stage/domain, …) grounded in that background.
 - **Model choice (agnostic):** prefer a **stronger** model for career-page discovery and extraction; a mid-tier model is usually enough for local corpus search and intro drafts.
 - **Refresh:** `network-jobs update` (or `npx --yes 'github:hirefrank/network-jobs#main' update`) re-fetches main and relinks skills.
 - **Health:** `network-jobs doctor` checks tools, PATH, profile, prefs, résumé, skills, and corpus size.

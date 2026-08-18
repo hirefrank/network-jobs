@@ -67,6 +67,8 @@ Search and discovery defaults from a **résumé-grounded** agent interview (not 
   "companyStages": ["seed", "series-b", "public"],
   "companySizes": [],
   "industries": ["developer-tools", "fintech"],
+  "formerEmployers": ["Acme Corp", "Example Labs"],
+  "formerEmployerPolicy": "exclude",
   "salaryMin": null,
   "mustHaves": ["strong eng partnership"],
   "dealBreakers": ["pure people-management with no craft"],
@@ -85,6 +87,8 @@ Search and discovery defaults from a **résumé-grounded** agent interview (not 
 | `companyStages` | Free-form tags the user cares about (e.g. `seed`, `series-a`, `growth`, `public`) |
 | `companySizes` | Optional size bands the user stated (free-form) |
 | `industries` | Domains from résumé + interview (free-form) |
+| `formerEmployers` | Company names from the résumé (past employers); used with `formerEmployerPolicy` |
+| `formerEmployerPolicy` | `include` — allow roles there · `exclude` — skip them in discover/search defaults · `ask` — confirm per company when they appear |
 | `salaryMin` | Annual USD floor, or `null` if undisclosed / no floor |
 | `mustHaves` | Short soft requirements |
 | `dealBreakers` | Short exclusions |

@@ -33,7 +33,11 @@ Read [SCHEMA.md](../../SCHEMA.md) first. Pattern inspired by Provenance `source-
    - Read `$DATA/companies/companies.json`
    - Prefer high `connectionCount`, or filter by user query
    - If `preferences.json` lists `categories` / `notes`, bias toward matching companies when the user has not named any
+   - If `formerEmployerPolicy` is `exclude` (default when set), **skip** companies in `formerEmployers` unless the user explicitly named them
+   - If policy is `ask` and a top company is a former employer, call that out and confirm before discovering
    - Ask before bulk-running more than ~5 companies in one go
+
+   High connection counts at former employers are common and **not** automatically a signal to prioritize those companies.
 
 2. **Check recipes**
    - Look in this skill’s [`references/`](references/) for a matching company or site-family recipe

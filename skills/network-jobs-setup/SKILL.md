@@ -60,6 +60,7 @@ Always read [SCHEMA.md](../../SCHEMA.md) first.
    | Seniority | senior / mid |
    | Track | `ic` / `manager` / `either` |
    | Company shape | stage, size, industry (from their history + desires) |
+   | Former employers | include / exclude / ask — see below |
    | Comp | optional `salaryMin`, or skip |
    | Must-haves / deal-breakers | e.g. no pure people-mgmt, must have eng partnership |
 
@@ -68,6 +69,7 @@ Always read [SCHEMA.md](../../SCHEMA.md) first.
    - Stay in current domain vs pivot (use résumé industries)
    - Startup vs scale-up vs public
    - Individual contributor craft depth vs broader GM/ops
+   - **Former employers** — LinkedIn graphs are dense with connections at places they used to work. From the résumé, list past employers into `formerEmployers`, then ask whether to **include**, **exclude**, or **ask each time** (`formerEmployerPolicy`). Default suggestion: exclude unless they say otherwise.
    - Travel, visa/work auth, commute limits — only if relevant
    - Anything the résumé makes surprising (“you’ve been EM for 5 years — still want that?”)
 
