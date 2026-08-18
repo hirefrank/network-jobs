@@ -42,14 +42,22 @@ Requires: `curl`, `jq`, `unzip`, `python3`, and `npm` (to install [`agent-browse
 
 ### Then use your agent
 
-Open Claude Code / Cursor / Codex and talk to it:
+In any agent that loaded these skills, talk to it in plain language:
 
 - “Set up network jobs” → fill profile  
 - “Import my LinkedIn zip at ~/Downloads/….zip”  
-- “Find open roles at my top companies”  
+- “Find open roles at my top companies” → review triage → “ingest that batch”  
 - “Senior PM jobs in NYC” → “Draft an intro to Jane”
 
-Daily use is **in the agent**. The CLI is for install, doctor, and optional import.
+Daily use is **in the agent**. The CLI is for install, update, doctor, and optional import.
+
+## Tips
+
+- **Pipeline stop:** `careers-discover` only stages under `triage/`. Review, then explicitly ask to ingest before anything lands in the searchable corpus.
+- **Model choice (agnostic):** prefer a **stronger** model for career-page discovery and extraction; a mid-tier model is usually enough for local corpus search and intro drafts.
+- **Refresh:** `network-jobs update` (or `npx --yes 'github:hirefrank/network-jobs#main' update`) re-fetches main and relinks skills.
+- **Health:** `network-jobs doctor` checks tools, PATH, profile, skills, and corpus size.
+- **Data:** everything lives under `~/.network-jobs/` — no hosted API.
 
 ## Pipeline
 
@@ -57,7 +65,8 @@ Daily use is **in the agent**. The CLI is for install, doctor, and optional impo
 LinkedIn ZIP
     → network-jobs-import   (connections + companies graph)
     → careers-discover      (stage openings under triage/)
-    → jobs-ingest           (promote to corpus/ after you confirm)
+    → you confirm
+    → jobs-ingest           (promote to corpus/)
     → network-jobs          (search local corpus)
     → intro-email-generator (forwardable warm intro)
 ```
@@ -72,7 +81,7 @@ Always read [SCHEMA.md](SCHEMA.md) for paths and JSON shapes.
 2. **Import** (CLI or agent)
 
 ```bash
-npx github:hirefrank/network-jobs import ~/Downloads/Connections.zip
+network-jobs import ~/Downloads/Connections.zip
 # or ask your agent: import my LinkedIn zip at …
 ```
 
@@ -107,19 +116,19 @@ network-jobs routing   # optional AGENTS.md snippet
 network-jobs which
 ```
 
-Each skill carries its own `description`, so agents route to them without extra configuration. If you want the workflow pinned in a project's instructions anyway, `network-jobs routing` prints a snippet for `CLAUDE.md` / `AGENTS.md`.
+Each skill carries its own `description`, so agents route to them without extra configuration. If you want the workflow pinned in a project's instructions anyway, `network-jobs routing` prints a snippet you can paste into your agent's instruction file.
 
 To refresh an existing install:
 
 ```bash
-npx github:hirefrank/network-jobs#main update
+npx --yes 'github:hirefrank/network-jobs#main' update
 ```
 
 To start over:
 
 ```bash
-npx github:hirefrank/network-jobs#main uninstall --yes --purge-cache
-npx github:hirefrank/network-jobs#main setup --agent auto
+npx --yes 'github:hirefrank/network-jobs#main' uninstall --yes --purge-cache
+npx --yes 'github:hirefrank/network-jobs#main' setup --agent auto
 ```
 
 ## Design notes

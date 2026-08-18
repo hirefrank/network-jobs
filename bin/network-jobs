@@ -471,7 +471,7 @@ cmd_doctor() {
     if [[ -n "$name" && -n "$email" ]]; then
       echo "OK  profile ($name / $email)"
     else
-      echo "WARN profile.json incomplete (name/email) — use network-jobs-setup skill"
+      echo "WARN profile.json incomplete (name/email) — in your agent: set up network jobs"
     fi
   else
     echo "MISS profile.json"
@@ -481,11 +481,16 @@ cmd_doctor() {
   if [[ -f "$DATA_HOME/companies/companies.json" ]]; then
     echo "OK  companies ($(jq 'length' "$DATA_HOME/companies/companies.json") entries)"
   else
-    echo "WARN no companies.json — run network-jobs import"
+    echo "WARN no companies.json — network-jobs import <zip-or-csv>"
   fi
 
   if [[ -f "$DATA_HOME/corpus/manifest.json" ]]; then
-    echo "OK  corpus totalJobs=$(jq -r '.totalJobs // 0' "$DATA_HOME/corpus/manifest.json")"
+    local total
+    total="$(jq -r '.totalJobs // 0' "$DATA_HOME/corpus/manifest.json")"
+    echo "OK  corpus totalJobs=$total"
+    if [[ "$total" == "0" || "$total" == "null" ]]; then
+      echo "TIP  corpus empty — in your agent: find open roles… then confirm before ingest"
+    fi
   fi
 
   echo
