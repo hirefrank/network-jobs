@@ -112,14 +112,14 @@ Each skill carries its own `description`, so agents route to them without extra 
 To refresh an existing install:
 
 ```bash
-npx github:hirefrank/network-jobs@main update
+npx github:hirefrank/network-jobs#main update
 ```
 
 To start over:
 
 ```bash
-npx github:hirefrank/network-jobs@main uninstall --yes --purge-cache
-npx github:hirefrank/network-jobs@main setup --agent auto
+npx github:hirefrank/network-jobs#main uninstall --yes --purge-cache
+npx github:hirefrank/network-jobs#main setup --agent auto
 ```
 
 ## Design notes
