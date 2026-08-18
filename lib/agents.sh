@@ -81,3 +81,34 @@ network_jobs_list_agents() {
     fi
   done
 }
+
+# True when this suite root is an npx/pnpm store copy (not a git checkout).
+network_jobs_is_packaged_install() {
+  local root="${1:-}"
+  [[ -z "$root" ]] && return 1
+  [[ -d "$root/.git" ]] && return 1
+  case "$root" in
+    */node_modules/@hirefrank/network-jobs|*/node_modules/@hirefrank/network-jobs/) return 0 ;;
+    */.local/share/pnpm/*) return 0 ;;
+    */.npm/_npx/*) return 0 ;;
+    */.cache/pnpm/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Drop cached npx/pnpm copies so the next github: fetch resolves fresh main.
+network_jobs_purge_package_cache() {
+  local cache
+  for cache in \
+    "$HOME/.local/share/pnpm/store/v11/links/@hirefrank/network-jobs"
+  do
+    if [[ -e "$cache" || -L "$cache" ]]; then
+      rm -rf "$cache"
+      echo "removed $cache"
+    fi
+  done
+  if [[ -d "$HOME/.cache/pnpm/dlx" ]]; then
+    find "$HOME/.cache/pnpm/dlx" -maxdepth 2 -iname '*network-jobs*' -exec rm -rf {} + 2>/dev/null || true
+    echo "cleared matching pnpm dlx entries (best-effort)"
+  fi
+}

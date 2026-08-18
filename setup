@@ -15,7 +15,7 @@ AGENTS_CSV=""
 COPY_MODE=0
 VERBOSE=0
 FORCE=0
-WITH_BROWSER=0
+WITH_BROWSER=1
 PRINT_ROUTING=0
 
 usage() {
@@ -28,7 +28,8 @@ Options:
   --agent <list>    Target agents: auto (default), all, or claude-code,cursor,…
   --force           Replace existing non-symlink skill dirs (e.g. older installs)
   --copy            Copy skills instead of symlinking
-  --with-browser    Also install the optional agent-browser CLI globally
+  --no-browser      Skip installing agent-browser when missing
+  --with-browser    Install agent-browser if missing (default)
   --print-routing   Print the AGENTS.md routing snippet when finished
   --verbose, -v     Show every path as it is linked
   --help, -h        Show this help
@@ -46,6 +47,7 @@ while [[ $# -gt 0 ]]; do
     --copy) COPY_MODE=1; shift ;;
     --force) FORCE=1; shift ;;
     --with-browser) WITH_BROWSER=1; shift ;;
+    --no-browser) WITH_BROWSER=0; shift ;;
     --print-routing) PRINT_ROUTING=1; shift ;;
     -v|--verbose) VERBOSE=1; shift ;;
     -y|--yes) shift ;;
@@ -65,23 +67,27 @@ if ((${#missing[@]})); then
   exit 1
 fi
 
-# --- optional browser automation ---
+# --- browser automation (default on; needed for JS-heavy career pages) ---
 browser_note=""
 if command -v agent-browser >/dev/null 2>&1; then
   browser_note="agent-browser ready"
 elif [[ "$WITH_BROWSER" -eq 1 ]]; then
   if command -v npm >/dev/null 2>&1; then
     echo "Installing agent-browser…"
-    if npm install -g agent-browser >/dev/null 2>&1; then
-      browser_note="agent-browser installed"
+    if npm install -g agent-browser; then
+      if command -v agent-browser >/dev/null 2>&1; then
+        browser_note="agent-browser installed"
+      else
+        browser_note="agent-browser installed but not on PATH yet (restart shell)"
+      fi
     else
       browser_note="agent-browser install failed (run: npm i -g agent-browser)"
     fi
   else
-    browser_note="npm not found; install agent-browser manually"
+    browser_note="npm not found; install agent-browser manually (npm i -g agent-browser)"
   fi
 else
-  browser_note="agent-browser not installed (optional: setup --with-browser)"
+  browser_note="agent-browser skipped (--no-browser)"
 fi
 
 # --- data dirs ---
@@ -129,6 +135,9 @@ fi
 
 echo "$SUITE_ROOT" > "$DATA_HOME/suite-root"
 export NETWORK_JOBS_SUITE="$SUITE_ROOT"
+if [[ -f "$SUITE_ROOT/package.json" ]] && command -v jq >/dev/null 2>&1; then
+  jq -r '.version // "0.0.0"' "$SUITE_ROOT/package.json" > "$DATA_HOME/version"
+fi
 
 # --- resolve target skill parents ---
 declare -a TARGET_DIRS=()

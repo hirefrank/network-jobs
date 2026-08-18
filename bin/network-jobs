@@ -17,8 +17,11 @@ usage() {
 Usage: network-jobs [--help] <command> [options]
 
 Commands:
-  setup [--agent auto|all|name,...] [--force] [--copy] [--with-browser] [-v]
+  setup [--agent auto|all|name,...] [--force] [--copy] [--no-browser] [-v]
       Create ~/.network-jobs and install skills into agent skill dirs
+
+  update [--agent auto|all|name,...] [--force] [--no-browser] [-v]
+      Fetch latest suite, relink skills, install agent-browser if missing
 
   doctor
       Check tools, data dir, profile, skill links, corpus
@@ -52,7 +55,7 @@ Env:
   NETWORK_JOBS_HOME        Data directory (default: ~/.network-jobs)
   NETWORK_JOBS_SKILLS_DIR  Install skills into this single parent only
 
-Day-to-day use happens in your agent. The CLI is for install, doctor, and import.
+Day-to-day use happens in your agent. The CLI is for install, update, doctor, and import.
 EOF
 }
 
@@ -61,12 +64,14 @@ usage_setup() {
 Usage: network-jobs setup [options]
 
 Create ~/.network-jobs and link skills into one or more agent skill directories.
+Installs agent-browser globally when missing (skip with --no-browser).
 
 Options:
   --agent <list>    Target agents: auto (default), all, or claude-code,cursor,…
   --force           Replace existing non-symlink skill dirs (e.g. older installs)
   --copy            Copy skills instead of symlinking
-  --with-browser    Also install the optional agent-browser CLI globally
+  --no-browser      Skip installing agent-browser when missing
+  --with-browser    Install agent-browser if missing (default)
   --print-routing   Print the AGENTS.md routing snippet when finished
   --verbose, -v     Show every path as it is linked
   --help, -h        Show this help
@@ -74,6 +79,32 @@ Options:
 Env:
   NETWORK_JOBS_HOME        Data directory (default: ~/.network-jobs)
   NETWORK_JOBS_SKILLS_DIR  Single skills parent (overrides --agent)
+EOF
+}
+
+usage_update() {
+  cat <<'EOF'
+Usage: network-jobs update [options]
+
+Refresh the suite to the latest main, rewrite skill symlinks, and ensure
+agent-browser is installed.
+
+When this CLI was installed via npx, update clears the cached package copy
+and re-runs: npx github:hirefrank/network-jobs@main setup …
+
+When run from a local git checkout, update pulls (if possible) and re-runs
+local setup against that tree.
+
+Options (passed through to setup):
+  --agent <list>   Target agents: auto (default), all, or claude-code,cursor,…
+  --force          Replace existing non-symlink skill dirs
+  --no-browser     Skip installing agent-browser
+  --verbose, -v    Show every path as it is linked
+  --help, -h       Show this help
+
+Examples:
+  network-jobs update
+  npx github:hirefrank/network-jobs@main update
 EOF
 }
 
@@ -171,6 +202,7 @@ cmd_help() {
   case "$topic" in
     "" ) usage ;;
     setup) usage_setup ;;
+    update) usage_update ;;
     doctor) usage_doctor ;;
     import) usage_import ;;
     reset|uninstall) usage_reset ;;
@@ -323,28 +355,62 @@ cmd_reset() {
   fi
 
   if [[ "$purge_cache" -eq 1 ]]; then
-    local cache
-    for cache in \
-      "$HOME/.local/share/pnpm/store/v11/links/@hirefrank/network-jobs"
-    do
-      if [[ -e "$cache" || -L "$cache" ]]; then
-        rm -rf "$cache"
-        echo "removed $cache"
-      fi
-    done
-    if [[ -d "$HOME/.cache/pnpm/dlx" ]]; then
-      find "$HOME/.cache/pnpm/dlx" -maxdepth 2 -iname '*network-jobs*' -exec rm -rf {} + 2>/dev/null || true
-      echo "cleared matching pnpm dlx entries (best-effort)"
-    fi
+    network_jobs_purge_package_cache
   fi
 
   echo
   echo "Reset complete ($removed removed)."
   if [[ "$wipe_data" -eq 1 ]]; then
-    echo "Reinstall: npx github:hirefrank/network-jobs setup --agent auto"
+    echo "Reinstall: npx github:hirefrank/network-jobs@main setup --agent auto"
   else
     echo "Re-link skills: network-jobs setup --agent auto"
   fi
+}
+
+cmd_update() {
+  if network_jobs_want_help "$@"; then
+    usage_update
+    return 0
+  fi
+
+  local -a setup_args=("$@")
+  # Always force-replace stale non-symlink skill dirs on update unless user set --copy
+  local has_force=0 has_copy=0
+  local arg
+  for arg in "${setup_args[@]+"${setup_args[@]}"}"; do
+    case "$arg" in
+      --force) has_force=1 ;;
+      --copy) has_copy=1 ;;
+    esac
+  done
+  if [[ "$has_force" -eq 0 && "$has_copy" -eq 0 ]]; then
+    setup_args+=(--force)
+  fi
+
+  if network_jobs_is_packaged_install "$ROOT"; then
+    echo "Updating from GitHub (purging cached suite first)…"
+    network_jobs_purge_package_cache
+    if ! command -v npx >/dev/null 2>&1; then
+      echo "error: npx not found — cannot re-fetch the suite" >&2
+      return 1
+    fi
+    # Fresh process so npx resolves a new store path for @main
+    exec npx --yes github:hirefrank/network-jobs@main setup "${setup_args[@]}"
+  fi
+
+  if [[ -d "$ROOT/.git" ]]; then
+    echo "Updating local checkout at $ROOT …"
+    if command -v git >/dev/null 2>&1; then
+      if git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet; then
+        git -C "$ROOT" pull --ff-only || echo "warning: git pull failed — continuing with local tree" >&2
+      else
+        echo "warning: uncommitted local changes — skipping git pull"
+      fi
+    fi
+  else
+    echo "Re-linking from $ROOT …"
+  fi
+  exec "$ROOT/setup" "${setup_args[@]}"
 }
 
 cmd_doctor() {
@@ -362,6 +428,9 @@ cmd_doctor() {
   echo "==> Network Jobs doctor"
   echo "    Suite: $ROOT"
   echo "    Data:  $DATA_HOME"
+  if [[ -f "$DATA_HOME/version" ]]; then
+    echo "    Version: $(cat "$DATA_HOME/version")"
+  fi
   echo
 
   for tool in curl jq unzip python3; do
@@ -375,7 +444,7 @@ cmd_doctor() {
   if command -v agent-browser >/dev/null 2>&1; then
     echo "OK  agent-browser"
   else
-    echo "WARN agent-browser missing (optional) — network-jobs setup --with-browser"
+    echo "WARN agent-browser missing — network-jobs update   (or: npm i -g agent-browser)"
   fi
   echo
 
@@ -514,6 +583,7 @@ case "$cmd" in
       exec "$ROOT/setup" "$@"
     fi
     ;;
+  update) cmd_update "$@" ;;
   doctor) cmd_doctor "$@" ;;
   import) cmd_import "$@" ;;
   reset) cmd_reset "$@" ;;
