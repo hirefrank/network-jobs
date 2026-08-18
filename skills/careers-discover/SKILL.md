@@ -83,9 +83,41 @@ Use [`helpers/stage-company.sh`](helpers/stage-company.sh) to mkdir + write skel
 
 ## Bot / fetch tiers
 
-1. Public `curl` / WebFetch (static HTML or public JSON)
-2. `agent-browser` headed/headless automation
-3. User real-browser / CDP capture promoted into triage
+Escalate only as far as needed. Prefer the cheapest tier that returns real listings.
+
+### 1. `curl` / WebFetch (default)
+
+Use when:
+- The careers URL or a linked jobs JSON returns substantive HTML/JSON (titles + links visible in the body)
+- A public jobs API is obvious (`/api/…`, `…/jobs.json`, common ATS JSON feeds)
+- You’re probing `/careers`, `/jobs`, or a domain homepage for a careers link
+
+Skip straight past this tier only if you already know the site is a heavy SPA from a recipe or prior fetch-log.
+
+### 2. `agent-browser`
+
+Use when tier 1 yields:
+- Empty shell / “enable JavaScript” / framework root with no listings
+- Soft bot interstitial or cookie wall that blocks content
+- Pagination or filters that require click / “Load more” / infinite scroll
+- Client-side routing where listing URLs aren’t discoverable from static HTML
+
+Workflow: open URL → snapshot → interact by refs → re-snapshot after DOM changes → write fetch-log before summarizing.
+
+### 3. User capture / CDP
+
+Use when tier 2 still can’t see listings (hard login, hard captcha, geo block). Ask the user to save/share the page; stage from that capture. Do not invent openings.
+
+### Decision rule
+
+```text
+try WebFetch/curl
+  → real listings?        stage them
+  → empty / JS / challenge?  agent-browser once
+  → still blocked?           ask user (stop automating)
+```
+
+Never start with agent-browser for a simple static page. Never keep retrying browser against a hard auth wall.
 
 ## Helpers
 
