@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Rebuild corpus shards + manifest from a flat jobs-all.json array.
+# Merges with existing corpus/jobs-all.json (input wins on same URL).
 set -euo pipefail
 
 ALL_JSON="${1:-}"
 if [[ -z "$ALL_JSON" || ! -f "$ALL_JSON" ]]; then
   echo "Usage: rebuild-corpus.sh <jobs-all.json>" >&2
+  echo "  Merges into existing corpus (by URL); input jobs win on conflict." >&2
   exit 1
 fi
 
@@ -21,18 +23,32 @@ from pathlib import Path
 
 all_path = Path(os.environ["ALL_JSON"])
 corpus = Path(os.environ["CORPUS"])
+existing_path = corpus / "jobs-all.json"
 
-jobs = json.loads(all_path.read_text())
-if not isinstance(jobs, list):
-    raise SystemExit("jobs-all.json must be a JSON array")
+def load_jobs(path: Path):
+    if not path.exists():
+        return []
+    data = json.loads(path.read_text())
+    if not isinstance(data, list):
+        raise SystemExit(f"{path} must be a JSON array")
+    return data
 
-# Dedupe by url (last wins)
+incoming = load_jobs(all_path)
+# Merge: existing first, then incoming (incoming overwrites same URL)
 by_url = {}
-for j in jobs:
+for j in load_jobs(existing_path):
+    url = (j.get("url") or "").strip()
+    if url:
+        by_url[url] = j
+for j in incoming:
     url = (j.get("url") or "").strip()
     if not url:
         continue
+    prev = by_url.get(url)
+    if prev and not j.get("firstSeen"):
+        j = {**j, "firstSeen": prev.get("firstSeen") or j.get("firstSeen")}
     by_url[url] = j
+
 jobs = list(by_url.values())
 
 categories = defaultdict(list)
@@ -45,25 +61,22 @@ for j in jobs:
     categories[cat].append(j)
     granular[(cat, loc, sen)].append(j)
 
-# Remove old shard jsons except we rewrite everything we know
-# Keep non-matching files? Safer to only overwrite files we generate.
-written = []
+written = set()
 
 for cat, items in categories.items():
-    path = corpus / f"{cat}.json"
-    path.write_text(json.dumps(items, indent=2, ensure_ascii=False) + "\n")
-    written.append(path.name)
+    name = f"{cat}.json"
+    (corpus / name).write_text(json.dumps(items, indent=2, ensure_ascii=False) + "\n")
+    written.add(name)
 
 for (cat, loc, sen), items in granular.items():
     name = f"{cat}-{loc}-{sen}.json"
-    path = corpus / name
-    path.write_text(json.dumps(items, indent=2, ensure_ascii=False) + "\n")
-    written.append(name)
+    (corpus / name).write_text(json.dumps(items, indent=2, ensure_ascii=False) + "\n")
+    written.add(name)
 
-# Also write jobs-all for debugging
 (corpus / "jobs-all.json").write_text(
     json.dumps(jobs, indent=2, ensure_ascii=False) + "\n"
 )
+written.add("jobs-all.json")
 
 now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 manifest = {
@@ -96,5 +109,25 @@ for cat, items in sorted(categories.items()):
     manifest["categories"][cat] = entry
 
 (corpus / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-print(json.dumps({"totalJobs": len(jobs), "files": written, "lastUpdated": now}, indent=2))
+written.add("manifest.json")
+
+# Remove stale shard JSON files no longer referenced
+keep = written | {"manifest.json", "jobs-all.json"}
+removed = []
+for path in corpus.glob("*.json"):
+    if path.name in keep:
+        continue
+    # Only remove category / granular shard patterns
+    if path.name == "manifest.json" or path.name == "jobs-all.json":
+        continue
+    path.unlink()
+    removed.append(path.name)
+
+print(json.dumps({
+    "totalJobs": len(jobs),
+    "incoming": len(incoming),
+    "files": sorted(written),
+    "removedStale": removed,
+    "lastUpdated": now,
+}, indent=2))
 PY

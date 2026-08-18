@@ -30,8 +30,8 @@ Tracked as deferred work from the Local Network Jobs Skills plan. The Cloudflare
 - [ ] Announce one-paste install:
 
 ```bash
-git clone --depth 1 https://github.com/hirefrank/network-jobs.git ~/.claude/skills/network-jobs \
-  && cd ~/.claude/skills/network-jobs && ./setup
+git clone --depth 1 https://github.com/hirefrank/network-jobs.git ~/.claude/skills/network-jobs-suite \
+  && cd ~/.claude/skills/network-jobs-suite && ./setup
 ```
 
 ## Out of scope for decommission PR

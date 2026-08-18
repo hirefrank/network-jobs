@@ -29,10 +29,12 @@ Read [SCHEMA.md](../SCHEMA.md) first.
    - `seniority` — `senior` if title matches Senior/Staff/Principal/Lead/Director/VP/Head; else `mid`
    - `firstSeen` / `lastSeen` — today (ISO date) if new; bump `lastSeen` if URL already in corpus
    - Keep `salary` / `postedAt` only if present in triage
-4. **Merge** into corpus:
-   - Prefer helper: [`helpers/rebuild-corpus.sh`](helpers/rebuild-corpus.sh) after writing/updating a working `jobs-all.json`, **or**
-   - Update category files + granular `{category}-{loc}-{seniority}.json` + `manifest.json` carefully with jq
-5. **Report** counts added/updated/skipped; show new `manifest.totalJobs` and `lastUpdated`
+4. **Merge** into corpus via helper (required):
+   - Write the **new/updated jobs only** to a working file (e.g. `$DATA/corpus/.work/batch.json`)
+   - Run [`helpers/rebuild-corpus.sh`](helpers/rebuild-corpus.sh) on that file
+   - The helper **merges by URL** with existing `corpus/jobs-all.json` (incoming wins), rewrites shards + manifest, and **deletes stale shard files**
+   - Do **not** pass a partial list as if it were the full corpus — merge is automatic
+5. **Report** incoming count, total after merge, removed stale shards; show `manifest.totalJobs` and `lastUpdated`
 6. Leave triage dirs in place (do not delete unless user asks)
 
 ## Categories
@@ -50,11 +52,12 @@ Read [SCHEMA.md](../SCHEMA.md) first.
 
 ```bash
 DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
-# After producing $DATA/corpus/.work/jobs-all.json (array of normalized jobs):
-"$SUITE/jobs-ingest/helpers/rebuild-corpus.sh" "$DATA/corpus/.work/jobs-all.json"
+SUITE="${NETWORK_JOBS_SUITE:-$HOME/.claude/skills/network-jobs-suite}"
+# After normalizing a triage batch to $DATA/corpus/.work/batch.json:
+"$SUITE/jobs-ingest/helpers/rebuild-corpus.sh" "$DATA/corpus/.work/batch.json"
 ```
 
-The helper shards by category/location/seniority and rewrites `manifest.json`.
+The helper merges by URL with existing `corpus/jobs-all.json`, shards by category/location/seniority, rewrites `manifest.json`, and removes stale shard files.
 
 ## Related
 

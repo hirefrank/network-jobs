@@ -7,16 +7,18 @@ No Cloudflare Workers. No hosted job DB. No ATS adapter matrix. The model finds 
 ## Install
 
 ```bash
-git clone --depth 1 https://github.com/hirefrank/network-jobs.git ~/.claude/skills/network-jobs \
-  && cd ~/.claude/skills/network-jobs && ./setup
+git clone --depth 1 https://github.com/hirefrank/network-jobs.git ~/.claude/skills/network-jobs-suite \
+  && cd ~/.claude/skills/network-jobs-suite && ./setup
 ```
+
+Clone as **`network-jobs-suite`**, not `network-jobs` — that name is reserved for the search skill symlink `./setup` creates.
 
 Requires: `curl`, `jq`, `unzip`. Recommended: [`agent-browser`](https://github.com/vercel-labs/agent-browser) for JS-heavy career sites.
 
 `./setup` will:
 
 1. Create `~/.network-jobs/` (connections, companies, triage, corpus, logs)
-2. Symlink each skill into `~/.claude/skills/`
+2. Symlink each skill into `~/.claude/skills/` (including `network-jobs` → suite/`network-jobs/`)
 3. Print a CLAUDE.md routing snippet to paste into your project
 
 Override paths with `NETWORK_JOBS_HOME` and `NETWORK_JOBS_SKILLS_DIR` if needed.

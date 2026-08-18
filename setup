@@ -55,6 +55,19 @@ else
 fi
 echo
 
+# Suite must NOT live at $SKILLS_PARENT/network-jobs — that path is reserved for the
+# search skill symlink. Canonical clone path: $SKILLS_PARENT/network-jobs-suite
+if [[ "$(basename "$SUITE_ROOT")" == "network-jobs" ]] && \
+   [[ "$(cd "$SUITE_ROOT/.." && pwd)" == "$(cd "$SKILLS_PARENT" && pwd)" ]]; then
+  echo "ERROR: suite is cloned as $SUITE_ROOT"
+  echo "That path blocks linking the nested network-jobs search skill."
+  echo
+  echo "Move it, then re-run setup:"
+  echo "  mv \"$SUITE_ROOT\" \"$SKILLS_PARENT/network-jobs-suite\""
+  echo "  cd \"$SKILLS_PARENT/network-jobs-suite\" && ./setup"
+  exit 1
+fi
+
 # --- data dirs ---
 mkdir -p \
   "$DATA_HOME/connections" \
@@ -99,8 +112,6 @@ EOF
 fi
 
 # --- symlink skills ---
-# If suite is already installed AT $SKILLS_PARENT/network-jobs, link siblings next to it.
-# Otherwise link into SKILLS_PARENT from wherever the suite lives.
 mkdir -p "$SKILLS_PARENT"
 
 for skill in "${SKILLS[@]}"; do
@@ -110,20 +121,21 @@ for skill in "${SKILLS[@]}"; do
     echo "WARN missing skill dir: $src"
     continue
   fi
+
+  # Never link over the suite root itself
+  if [[ -e "$dest" ]] && [[ "$(cd "$dest" 2>/dev/null && pwd)" == "$SUITE_ROOT" ]]; then
+    echo "ERROR: $dest is the suite root; cannot link skill '$skill' there."
+    echo "Install the suite at $SKILLS_PARENT/network-jobs-suite instead."
+    exit 1
+  fi
+
   if [[ -L "$dest" ]]; then
     rm -f "$dest"
-  elif [[ -d "$dest" && ! -L "$dest" ]]; then
-    # Already a real directory (e.g. suite cloned as ~/.claude/skills/network-jobs
-    # and skill is nested). Prefer nested path discovery; still create sibling link
-    # only if dest is not inside suite.
-    if [[ "$(cd "$dest" && pwd)" == "$(cd "$src" && pwd)" ]]; then
-      echo "OK  $skill (already at install path)"
-      continue
-    fi
+  elif [[ -e "$dest" ]]; then
     echo "WARN $dest exists and is not a symlink — skipping (remove it to relink)"
     continue
   fi
-  # When suite lives at ~/.claude/skills/network-jobs, create sibling symlinks
+
   ln -sfn "$src" "$dest"
   echo "Linked $dest -> $src"
 done

@@ -26,7 +26,7 @@ Read [SCHEMA.md](../SCHEMA.md) first.
 ```bash
 HELPER="$(dirname "$0")/helpers/parse-linkedin.sh"
 # When invoked via skill symlink, resolve suite helper:
-HELPER="${NETWORK_JOBS_SUITE:-$HOME/.claude/skills/network-jobs}/network-jobs-import/helpers/parse-linkedin.sh"
+HELPER="${NETWORK_JOBS_SUITE:-$HOME/.claude/skills/network-jobs-suite}/network-jobs-import/helpers/parse-linkedin.sh"
 DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
 
 "$HELPER" "/path/to/linkedin.zip" --out "$DATA"
