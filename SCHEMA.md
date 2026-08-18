@@ -61,6 +61,7 @@ Search and discovery defaults from a **résumé-grounded** agent interview (not 
   "workModes": ["remote", "hybrid"],
   "locationBuckets": ["nyc", "remote"],
   "locations": ["New York", "Remote US"],
+  "onsiteLocations": ["New York"],
   "categories": ["product"],
   "seniority": ["senior"],
   "track": ["ic"],
@@ -81,6 +82,7 @@ Search and discovery defaults from a **résumé-grounded** agent interview (not 
 | `workModes` | `remote` \| `hybrid` \| `onsite` (multi-select) |
 | `locationBuckets` | Corpus buckets to prefer: `nyc` \| `sf` \| `remote` \| `other` |
 | `locations` | Free-text places the user cares about (display / soft filter) |
+| `onsiteLocations` | Where onsite/hybrid is acceptable. **Required whenever `workModes` includes `hybrid` or `onsite`.** Never treat “open to onsite” as every office worldwide — scope it to these places (and matching `locationBuckets`). |
 | `categories` | Preferred role categories (same 15 as corpus) |
 | `seniority` | `senior` and/or `mid` |
 | `track` | `ic` \| `manager` \| `either` (individual contributor vs people manager) |

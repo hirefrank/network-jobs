@@ -38,7 +38,7 @@ Daily use is **in the agent**. The CLI is for install, update, doctor, résumé/
 ## Tips
 
 - **Pipeline stop:** `careers-discover` only stages under `triage/`. Review, then explicitly ask to ingest.
-- **Résumé + prefs:** `network-jobs profile import ~/resume.pdf`, then in your agent run setup from the résumé. Interview covers remote/hybrid/onsite, location, IC vs manager, **former employers include/exclude**, stage/domain, and other gaps the résumé implies.
+- **Résumé + prefs:** `network-jobs profile import ~/resume.pdf`, then in your agent run setup from the résumé. Interview covers remote/hybrid/onsite (**onsite scoped to specific cities**, not every office), location, IC vs manager, **former employers include/exclude**, stage/domain, and other gaps the résumé implies.
 - **Model choice (agnostic):** prefer a **stronger** model for career-page discovery; mid-tier is usually enough for local search and intro drafts.
 - **Refresh:** `network-jobs update`
 - **Health:** `network-jobs doctor`

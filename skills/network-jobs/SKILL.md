@@ -74,7 +74,10 @@ When the user does **not** specify location / mode / seniority / category / trac
 
 1. Read `preferences.json`.
 2. Prefer shards matching `locationBuckets` + `seniority` + `categories`.
-3. Honor `workModes`: if only `remote`, prefer `locationBucket=remote`; if `hybrid`/`onsite`, still include city buckets they listed.
+3. Honor `workModes` **with location scope**:
+   - `remote` only → prefer `locationBucket=remote`.
+   - Includes `hybrid` / `onsite` → include city buckets that match `onsiteLocations` / `locations` / `locationBuckets` — **not** every non-remote job worldwide.
+   - If `hybrid`/`onsite` is set but `onsiteLocations` is empty, ask once or fall back to `locations` / city `locationBuckets` only; never expand to global onsite.
 4. Honor `track` when filtering titles: `manager` → prefer Manager/Director/Head/EM/VP people-lead titles; `ic` → de-prioritize pure people-manager titles unless query asks; `either` → no track filter.
 5. Soft-filter with `locations`, `industries`, `companyStages`, `mustHaves`, `dealBreakers`, `notes`, `salaryMin` in judgment — do not invent salary on jobs that lack it.
 6. **Former employers:** read `formerEmployers` + `formerEmployerPolicy`.

@@ -54,8 +54,8 @@ Always read [SCHEMA.md](../../SCHEMA.md) first.
 
    | Dimension | Examples |
    |-----------|----------|
-   | Work mode | remote / hybrid / onsite |
-   | Location | cities → map to `nyc` \| `sf` \| `remote` \| `other` when clear |
+   | Work mode | remote / hybrid / onsite — and if hybrid/onsite, **where** (never “any office”) |
+   | Location | cities → map to `nyc` \| `sf` \| `remote` \| `other` when clear; fill `onsiteLocations` for in-person willingness |
    | Role category | from the 15 corpus categories, biased by résumé |
    | Seniority | senior / mid |
    | Track | `ic` / `manager` / `either` |
@@ -70,6 +70,7 @@ Always read [SCHEMA.md](../../SCHEMA.md) first.
    - Startup vs scale-up vs public
    - Individual contributor craft depth vs broader GM/ops
    - **Former employers** — LinkedIn graphs are dense with connections at places they used to work. From the résumé, list past employers into `formerEmployers`, then ask whether to **include**, **exclude**, or **ask each time** (`formerEmployerPolicy`). Default suggestion: exclude unless they say otherwise.
+   - **Onsite scope** — if they want remote *and* are open to onsite/hybrid, ask *which cities/metros* count. Write those to `onsiteLocations` (and matching buckets). Do not interpret “I’ll consider onsite” as every onsite role globally.
    - Travel, visa/work auth, commute limits — only if relevant
    - Anything the résumé makes surprising (“you’ve been EM for 5 years — still want that?”)
 
