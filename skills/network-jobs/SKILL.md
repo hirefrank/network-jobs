@@ -70,15 +70,16 @@ Never say you will “discover then ingest then search” in one uninterrupted p
 
 ### Apply preferences as defaults
 
-When the user does **not** specify location / mode / seniority / category:
+When the user does **not** specify location / mode / seniority / category / track:
 
 1. Read `preferences.json`.
 2. Prefer shards matching `locationBuckets` + `seniority` + `categories`.
 3. Honor `workModes`: if only `remote`, prefer `locationBucket=remote`; if `hybrid`/`onsite`, still include city buckets they listed.
-4. Soft-filter with `locations` / `notes` / `salaryMin` in prose — do not invent salary on jobs that lack it.
-5. If the user query conflicts with prefs, **query wins**.
+4. Honor `track` when filtering titles: `manager` → prefer Manager/Director/Head/EM/VP people-lead titles; `ic` → de-prioritize pure people-manager titles unless query asks; `either` → no track filter.
+5. Soft-filter with `locations`, `industries`, `companyStages`, `mustHaves`, `dealBreakers`, `notes`, `salaryMin` in judgment — do not invent salary on jobs that lack it.
+6. If the user query conflicts with prefs, **query wins**.
 
-Mention once when defaults applied: e.g. `Using your prefs: remote + NYC, product, senior`.
+Mention once when defaults applied: e.g. `Using your prefs: remote + NYC, product, senior IC`.
 
 ### Pattern A: "Do I have connections at [Company]?"
 

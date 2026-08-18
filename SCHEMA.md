@@ -52,7 +52,7 @@ Used by `network-jobs` (search header + intro footer) and `intro-email-generator
 
 ## preferences.json
 
-Search and discovery defaults from a short agent interview (after résumé / background is known):
+Search and discovery defaults from a **résumé-grounded** agent interview (not a fixed questionnaire). Ask only what the background leaves open; skip what the résumé already answers clearly.
 
 ```json
 {
@@ -63,8 +63,14 @@ Search and discovery defaults from a short agent interview (after résumé / bac
   "locations": ["New York", "Remote US"],
   "categories": ["product"],
   "seniority": ["senior"],
+  "track": ["ic"],
+  "companyStages": ["seed", "series-b", "public"],
+  "companySizes": [],
+  "industries": ["developer-tools", "fintech"],
   "salaryMin": null,
-  "notes": "Open to SF onsite for the right role; prefer Series B+"
+  "mustHaves": ["strong eng partnership"],
+  "dealBreakers": ["pure people-management with no craft"],
+  "notes": "Open to SF onsite for the right role"
 }
 ```
 
@@ -75,9 +81,17 @@ Search and discovery defaults from a short agent interview (after résumé / bac
 | `locations` | Free-text places the user cares about (display / soft filter) |
 | `categories` | Preferred role categories (same 15 as corpus) |
 | `seniority` | `senior` and/or `mid` |
+| `track` | `ic` \| `manager` \| `either` (individual contributor vs people manager) |
+| `companyStages` | Free-form tags the user cares about (e.g. `seed`, `series-a`, `growth`, `public`) |
+| `companySizes` | Optional size bands the user stated (free-form) |
+| `industries` | Domains from résumé + interview (free-form) |
 | `salaryMin` | Annual USD floor, or `null` if undisclosed / no floor |
-| `notes` | Soft constraints (company stage, industry, travel, etc.) |
+| `mustHaves` | Short soft requirements |
+| `dealBreakers` | Short exclusions |
+| `notes` | Catch-all soft constraints |
 | `interviewComplete` | `true` after the user finishes the preferences interview |
+
+Extra keys are allowed when the interview surfaces something useful (visa, travel %, commute, “staff+ only”, etc.) — keep values JSON-serializable.
 
 `network-jobs` should apply these as **defaults** when the user does not override in the query. User query always wins.
 

@@ -40,19 +40,38 @@ Always read [SCHEMA.md](../../SCHEMA.md) first.
 
    If there is no résumé yet, ask for name/email/title manually (same fields).
 
-3. **Preferences interview** (after background is known)
-   Run a short interview grounded in the résumé/profile. Goal: fill `preferences.json` so later search defaults are useful.
+3. **Preferences interview** (after background is known — **dynamic**)
+   Run a short interview **grounded in the résumé/profile**. This is not a fixed form.
 
-   Ask (adapt wording; skip what the résumé already answers clearly):
+   **How to run it**
+   1. Skim résumé + current `profile.json`. Note likely track (IC vs manager), domains, seniority signals, recent employers, and gaps.
+   2. Propose a **draft prefs summary** from what you already know (“Sounds like senior IC product in fintech/devtools, NYC-leaning…”).
+   3. Ask **only the open questions** — skip anything the résumé already settles.
+   4. Branch: if they were a manager, ask whether they want to stay on a people-manager track, return to IC, or either; if lifelong IC, ask whether they’re open to managing. Same idea for domain switches, founding vs bigco, etc.
+   5. Write `$DATA/preferences.json` (SCHEMA). Set `interviewComplete: true` and `updatedAt`. Extra keys OK when useful.
 
-   1. **Work mode** — remote, hybrid, and/or onsite? (multi-ok)
-   2. **Where** — cities / regions they want (and map to buckets `nyc` | `sf` | `remote` | `other` when clear)
-   3. **Roles** — preferred categories from the 15 corpus categories (e.g. product, engineering)
-   4. **Seniority** — senior and/or mid
-   5. **Compensation** — optional annual USD floor, or skip
-   6. **Soft notes** — company stage, industry, travel, visa, “no X”, etc.
+   **Core dimensions to cover if still unknown** (ask conversationally, not as a checklist dump):
 
-   Write `$DATA/preferences.json` per SCHEMA (set `interviewComplete: true`, `updatedAt` ISO UTC).
+   | Dimension | Examples |
+   |-----------|----------|
+   | Work mode | remote / hybrid / onsite |
+   | Location | cities → map to `nyc` \| `sf` \| `remote` \| `other` when clear |
+   | Role category | from the 15 corpus categories, biased by résumé |
+   | Seniority | senior / mid |
+   | Track | `ic` / `manager` / `either` |
+   | Company shape | stage, size, industry (from their history + desires) |
+   | Comp | optional `salaryMin`, or skip |
+   | Must-haves / deal-breakers | e.g. no pure people-mgmt, must have eng partnership |
+
+   **Dynamic follow-ups** (pick what fits *this* person):
+   - IC ↔ manager trajectory
+   - Stay in current domain vs pivot (use résumé industries)
+   - Startup vs scale-up vs public
+   - Individual contributor craft depth vs broader GM/ops
+   - Travel, visa/work auth, commute limits — only if relevant
+   - Anything the résumé makes surprising (“you’ve been EM for 5 years — still want that?”)
+
+   Do **not** ask every dimension every time. Prefer 3–6 tight questions, then confirm the written prefs.
 
    **STOP** after writing prefs — summarize them and ask what to do next (import LinkedIn / discover roles / search).
 
