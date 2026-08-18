@@ -44,19 +44,20 @@ Requires: `curl`, `jq`, `unzip`, `python3`, and `npm` (to install [`agent-browse
 
 In any agent that loaded these skills, talk to it in plain language:
 
-- “Set up network jobs” → fill profile  
+- “Set up network jobs from my resume” → profile + preferences interview  
 - “Import my LinkedIn zip at ~/Downloads/….zip”  
 - “Find open roles at my top companies” → review triage → “ingest that batch”  
 - “Senior PM jobs in NYC” → “Draft an intro to Jane”
 
-Daily use is **in the agent**. The CLI is for install, update, doctor, and optional import.
+Daily use is **in the agent**. The CLI is for install, update, doctor, profile/resume import, and optional LinkedIn import.
 
 ## Tips
 
 - **Pipeline stop:** `careers-discover` only stages under `triage/`. Review, then explicitly ask to ingest before anything lands in the searchable corpus.
+- **Résumé + prefs:** `network-jobs profile import ~/resume.pdf`, then in your agent: “set up network jobs from my resume” (fills profile, then interviews location / remote / hybrid / roles into `preferences.json`).
 - **Model choice (agnostic):** prefer a **stronger** model for career-page discovery and extraction; a mid-tier model is usually enough for local corpus search and intro drafts.
 - **Refresh:** `network-jobs update` (or `npx --yes 'github:hirefrank/network-jobs#main' update`) re-fetches main and relinks skills.
-- **Health:** `network-jobs doctor` checks tools, PATH, profile, skills, and corpus size.
+- **Health:** `network-jobs doctor` checks tools, PATH, profile, prefs, résumé, skills, and corpus size.
 - **Data:** everything lives under `~/.network-jobs/` — no hosted API.
 
 ## Pipeline
@@ -109,6 +110,8 @@ network-jobs setup [--agent auto|all|claude-code,cursor,…] [--force] [--no-bro
 network-jobs update [--agent …] [--force] [--no-browser]   # latest main + relink
 network-jobs doctor
 network-jobs import <zip-or-csv>
+network-jobs profile import <resume-file>                 # store résumé for profile + prefs interview
+network-jobs profile show
 network-jobs corpus clear [--triage] [--yes]              # empty searchable corpus; keep profile/graph
 network-jobs reset [--data] [--purge-cache] [--yes]   # remove skill links; --data also wipes ~/.network-jobs
 network-jobs uninstall [--yes]                        # alias for reset --data
@@ -118,6 +121,13 @@ network-jobs which
 ```
 
 Each skill carries its own `description`, so agents route to them without extra configuration. If you want the workflow pinned in a project's instructions anyway, `network-jobs routing` prints a snippet you can paste into your agent's instruction file.
+
+To import a résumé and then interview prefs in the agent:
+
+```bash
+network-jobs profile import ~/Downloads/Resume.pdf
+# then: “set up network jobs from my resume”
+```
 
 To empty jobs without wiping your LinkedIn graph:
 

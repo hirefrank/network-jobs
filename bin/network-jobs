@@ -29,6 +29,12 @@ Commands:
   import <zip-or-csv> [--min-count N]
       Parse LinkedIn Connections into the local company graph
 
+  profile import <resume-file>
+      Store résumé under ~/.network-jobs/resume/ (feeds profile + interview)
+
+  profile show
+      Print profile, preferences, and résumé status
+
   corpus clear [--triage] [--yes]
       Empty the searchable corpus (keeps profile + connections); optional triage wipe
 
@@ -141,6 +147,27 @@ Examples:
 EOF
 }
 
+usage_profile() {
+  cat <<'EOF'
+Usage: network-jobs profile import <resume-file>
+       network-jobs profile show
+
+import  Copy a résumé into ~/.network-jobs/resume/, extract text when possible
+        (txt/md, pdf via pdftotext, docx via python). Does not overwrite
+        profile.json by itself — ask your agent to fill profile from the résumé,
+        then run the preferences interview (location, remote/hybrid/onsite, …).
+
+show    Print profile.json, preferences.json, and résumé file status.
+
+Options:
+  --help, -h   Show this help
+
+Examples:
+  network-jobs profile import ~/Downloads/Resume.pdf
+  network-jobs profile show
+EOF
+}
+
 usage_corpus() {
   cat <<'EOF'
 Usage: network-jobs corpus clear [--triage] [--yes]
@@ -229,6 +256,7 @@ cmd_help() {
     update) usage_update ;;
     doctor) usage_doctor ;;
     import) usage_import ;;
+    profile) usage_profile ;;
     corpus) usage_corpus ;;
     reset|uninstall) usage_reset ;;
     agents) usage_agents ;;
@@ -496,11 +524,29 @@ cmd_doctor() {
     if [[ -n "$name" && -n "$email" ]]; then
       echo "OK  profile ($name / $email)"
     else
-      echo "WARN profile.json incomplete (name/email) — in your agent: set up network jobs"
+      echo "WARN profile.json incomplete (name/email) — profile import + agent setup"
     fi
   else
     echo "MISS profile.json"
     ok=0
+  fi
+
+  if [[ -f "$DATA_HOME/preferences.json" ]]; then
+    local prefs_done
+    prefs_done="$(jq -r '.interviewComplete // false' "$DATA_HOME/preferences.json" 2>/dev/null || echo false)"
+    if [[ "$prefs_done" == "true" ]]; then
+      echo "OK  preferences (interview complete)"
+    else
+      echo "WARN preferences.json present but interviewComplete!=true — finish prefs in agent"
+    fi
+  else
+    echo "WARN no preferences.json — in your agent: job search preferences interview"
+  fi
+
+  if [[ -f "$DATA_HOME/resume/text.md" ]] || compgen -G "$DATA_HOME/resume/source.*" >/dev/null 2>&1; then
+    echo "OK  resume under $DATA_HOME/resume"
+  else
+    echo "TIP  no résumé yet — network-jobs profile import ~/path/to/resume.pdf"
   fi
 
   if [[ -f "$DATA_HOME/companies/companies.json" ]]; then
@@ -659,6 +705,77 @@ cmd_corpus() {
   esac
 }
 
+cmd_profile_import() {
+  if network_jobs_want_help "$@"; then
+    usage_profile
+    return 0
+  fi
+  local input="${1:-}"
+  if [[ -z "$input" ]]; then
+    usage_profile >&2
+    return 1
+  fi
+  local helper="$ROOT/skills/network-jobs-setup/helpers/import-resume.sh"
+  if [[ ! -x "$helper" ]]; then
+    echo "ERROR: missing $helper" >&2
+    return 1
+  fi
+  mkdir -p "$DATA_HOME"
+  "$helper" "$input" "$DATA_HOME"
+  echo
+  echo "Next: in your agent — \"set up network jobs from my resume\" (fills profile,"
+  echo "then interviews you on location / remote / hybrid / role prefs)."
+}
+
+cmd_profile_show() {
+  if network_jobs_want_help "$@"; then
+    usage_profile
+    return 0
+  fi
+  if [[ $# -gt 0 ]]; then
+    echo "Unknown arg: $1" >&2
+    return 1
+  fi
+  echo "==> profile ($DATA_HOME/profile.json)"
+  if [[ -f "$DATA_HOME/profile.json" ]]; then
+    jq . "$DATA_HOME/profile.json"
+  else
+    echo "(missing)"
+  fi
+  echo
+  echo "==> preferences ($DATA_HOME/preferences.json)"
+  if [[ -f "$DATA_HOME/preferences.json" ]]; then
+    jq . "$DATA_HOME/preferences.json"
+  else
+    echo "(missing — run preferences interview in your agent)"
+  fi
+  echo
+  echo "==> resume"
+  if [[ -d "$DATA_HOME/resume" ]]; then
+    ls -la "$DATA_HOME/resume"
+    if [[ -f "$DATA_HOME/resume/text.md" ]]; then
+      echo "text.md lines: $(wc -l < "$DATA_HOME/resume/text.md")"
+    fi
+  else
+    echo "(none — network-jobs profile import <file>)"
+  fi
+}
+
+cmd_profile() {
+  local sub="${1:-}"
+  shift || true
+  case "$sub" in
+    ""|-h|--help|help) usage_profile ;;
+    import) cmd_profile_import "$@" ;;
+    show) cmd_profile_show "$@" ;;
+    *)
+      echo "Unknown profile command: $sub" >&2
+      echo "Try: network-jobs profile --help" >&2
+      return 1
+      ;;
+  esac
+}
+
 cmd_agents() {
   if network_jobs_want_help "$@"; then
     usage_agents
@@ -719,6 +836,7 @@ case "$cmd" in
   update) cmd_update "$@" ;;
   doctor) cmd_doctor "$@" ;;
   import) cmd_import "$@" ;;
+  profile) cmd_profile "$@" ;;
   corpus) cmd_corpus "$@" ;;
   reset) cmd_reset "$@" ;;
   uninstall) cmd_reset --data "$@" ;;

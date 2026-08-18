@@ -29,6 +29,8 @@ cat "$DATA/corpus/manifest.json"
 | File | Purpose |
 |------|---------|
 | `profile.json` | Search header + intro footer identity |
+| `preferences.json` | Default work mode, locations, categories, seniority |
+| `resume/text.md` | Résumé text for intros / profile fill |
 | `corpus/manifest.json` | Category index + granular file map |
 | `corpus/{category}.json` | Full category list |
 | `corpus/{category}-{loc}-{seniority}.json` | Preferred granular shards |
@@ -40,11 +42,12 @@ cat "$DATA/corpus/manifest.json"
 
 ## Procedures
 
-**First step for all patterns:** load profile + manifest.
+**First step for all patterns:** load profile + preferences + manifest.
 
 ```bash
 DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
 jq -r '"\(.name)|\(.title)|\(.company)|\(.email)"' "$DATA/profile.json"
+jq . "$DATA/preferences.json" 2>/dev/null || echo "(no preferences yet)"
 jq . "$DATA/corpus/manifest.json"
 ```
 
@@ -52,7 +55,9 @@ jq . "$DATA/corpus/manifest.json"
 
 If `companies/companies.json` is missing → run **network-jobs-import** (or ask for a LinkedIn ZIP). Do not invent a graph.
 
-If `profile.json` `name` or `email` is empty → run **network-jobs-setup** (or ask) **before** promising search headers / intro footers. Discovery can proceed without a profile; search + intros should not.
+If `profile.json` `name` or `email` is empty → run **network-jobs-setup** (résumé import + profile). Discovery can proceed without a profile; search + intros should not.
+
+If `preferences.json` is missing or `interviewComplete` is not true → offer **network-jobs-setup** preferences interview (location, remote/hybrid/onsite, roles) before broad searches. User can skip and override per query.
 
 If `manifest.totalJobs` is 0 or `lastUpdated` is null:
 
@@ -62,6 +67,18 @@ If `manifest.totalJobs` is 0 or `lastUpdated` is null:
 4. Only after ingest completes, resume search with this skill.
 
 Never say you will “discover then ingest then search” in one uninterrupted pass.
+
+### Apply preferences as defaults
+
+When the user does **not** specify location / mode / seniority / category:
+
+1. Read `preferences.json`.
+2. Prefer shards matching `locationBuckets` + `seniority` + `categories`.
+3. Honor `workModes`: if only `remote`, prefer `locationBucket=remote`; if `hybrid`/`onsite`, still include city buckets they listed.
+4. Soft-filter with `locations` / `notes` / `salaryMin` in prose — do not invent salary on jobs that lack it.
+5. If the user query conflicts with prefs, **query wins**.
+
+Mention once when defaults applied: e.g. `Using your prefs: remote + NYC, product, senior`.
 
 ### Pattern A: "Do I have connections at [Company]?"
 
@@ -128,6 +145,7 @@ Connections at Justworks: …
 
 ## Related Skills
 
+- **network-jobs-setup** — profile, résumé, preferences interview
 - **careers-discover** / **jobs-ingest** — refresh local openings
-- **intro-email-generator** — draft forwardable warm intro (pass job URL + forwarder name + resume)
+- **intro-email-generator** — draft forwardable warm intro (pass job URL + forwarder name; résumé from `~/.network-jobs/resume/`)
 - **network-jobs-import** — refresh LinkedIn graph

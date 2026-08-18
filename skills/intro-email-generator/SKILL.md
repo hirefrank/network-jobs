@@ -36,10 +36,19 @@ People often write the email addressed to the wrong person. They write to the ta
 ## Required Inputs
 
 Gather before generating:
-- **Resume** — uploaded file, pasted text, or URL
+- **Resume** — prefer `~/.network-jobs/resume/text.md` (or `source.*`); else uploaded file, pasted text, or URL
 - **Job description** — text or job posting URL
+- **Profile** — `~/.network-jobs/profile.json` for seeker name/email when present
 - **Additional context** (optional) — key achievements, why they're interested, specific angles to emphasize
 - **Job URL** (optional) — for the closing; if unavailable, reference job title instead
+
+```bash
+DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
+cat "$DATA/profile.json"
+cat "$DATA/resume/text.md" 2>/dev/null || ls -la "$DATA/resume"
+```
+
+If résumé is missing, ask the user to run `network-jobs profile import <file>` or paste text.
 
 ## Email Structure
 

@@ -148,6 +148,7 @@ mkdir -p \
   "$DATA_HOME/config" \
   "$DATA_HOME/triage" \
   "$DATA_HOME/corpus" \
+  "$DATA_HOME/resume" \
   "$DATA_HOME/logs"
 
 ASSET_DIR="$SKILLS_SRC/network-jobs-import/assets"

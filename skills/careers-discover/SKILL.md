@@ -32,6 +32,7 @@ Read [SCHEMA.md](../../SCHEMA.md) first. Pattern inspired by Provenance `source-
 1. **Pick companies**
    - Read `$DATA/companies/companies.json`
    - Prefer high `connectionCount`, or filter by user query
+   - If `preferences.json` lists `categories` / `notes`, bias toward matching companies when the user has not named any
    - Ask before bulk-running more than ~5 companies in one go
 
 2. **Check recipes**

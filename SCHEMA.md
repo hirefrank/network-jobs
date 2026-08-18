@@ -9,6 +9,10 @@ Default: `~/.network-jobs/` (override with `NETWORK_JOBS_HOME`).
 ```text
 ~/.network-jobs/
 ├── profile.json
+├── preferences.json              # search prefs from agent interview
+├── resume/
+│   ├── source.<ext>              # original upload (pdf/docx/md/…)
+│   └── text.md                   # extracted plain text (when available)
 ├── connections/
 │   └── connections.json
 ├── companies/
@@ -44,7 +48,47 @@ Default: `~/.network-jobs/` (override with `NETWORK_JOBS_HOME`).
 }
 ```
 
-Used by `network-jobs` (search header + intro footer) and `intro-email-generator` (job seeker identity when drafting).
+Used by `network-jobs` (search header + intro footer) and `intro-email-generator` (job seeker identity when drafting). Prefer filling from a résumé via `network-jobs profile import` + the setup skill — do not invent email.
+
+## preferences.json
+
+Search and discovery defaults from a short agent interview (after résumé / background is known):
+
+```json
+{
+  "updatedAt": "2026-08-18T23:00:00Z",
+  "interviewComplete": true,
+  "workModes": ["remote", "hybrid"],
+  "locationBuckets": ["nyc", "remote"],
+  "locations": ["New York", "Remote US"],
+  "categories": ["product"],
+  "seniority": ["senior"],
+  "salaryMin": null,
+  "notes": "Open to SF onsite for the right role; prefer Series B+"
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `workModes` | `remote` \| `hybrid` \| `onsite` (multi-select) |
+| `locationBuckets` | Corpus buckets to prefer: `nyc` \| `sf` \| `remote` \| `other` |
+| `locations` | Free-text places the user cares about (display / soft filter) |
+| `categories` | Preferred role categories (same 15 as corpus) |
+| `seniority` | `senior` and/or `mid` |
+| `salaryMin` | Annual USD floor, or `null` if undisclosed / no floor |
+| `notes` | Soft constraints (company stage, industry, travel, etc.) |
+| `interviewComplete` | `true` after the user finishes the preferences interview |
+
+`network-jobs` should apply these as **defaults** when the user does not override in the query. User query always wins.
+
+## resume/
+
+| Path | Purpose |
+|------|---------|
+| `resume/source.*` | Original file from `network-jobs profile import` |
+| `resume/text.md` | Extracted text for profile fill, prefs interview, and intro drafts |
+
+PII — never commit `~/.network-jobs/resume/` into git.
 
 ## connections.json
 
@@ -207,9 +251,11 @@ Verbatim capture of each fetch/browser snapshot **before** presenting results to
 
 | Skill | Reads | Writes |
 |-------|-------|--------|
-| `network-jobs-setup` | — | `profile.json`, data dirs |
+| `network-jobs-setup` | `resume/`, conversation | `profile.json`, `preferences.json` |
 | `network-jobs-import` | LinkedIn ZIP | `connections/`, `companies/` |
-| `careers-discover` | `companies/` | `triage/` |
+| `careers-discover` | `companies/`, `preferences.json` (optional focus) | `triage/` |
 | `jobs-ingest` | `triage/` | `corpus/` |
-| `network-jobs` | `corpus/`, `profile.json` | — |
-| `intro-email-generator` | user resume + job context | — (draft in chat) |
+| `network-jobs` | `corpus/`, `profile.json`, `preferences.json` | — |
+| `intro-email-generator` | `profile.json`, `resume/text.md`, job context | — (draft in chat) |
+
+CLI helpers: `network-jobs profile import <file>` stores the résumé; `network-jobs profile show` prints profile + prefs + resume status.
