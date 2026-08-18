@@ -31,10 +31,15 @@ This creates `~/.network-jobs/` **and** symlinks all six skills into each detect
 ```bash
 network-jobs setup --agent claude-code,cursor,codex
 network-jobs setup --agent all
+network-jobs setup --with-browser   # also install the optional agent-browser CLI
+network-jobs setup --force          # replace skill dirs from an older install
+network-jobs setup -v               # print every path
 network-jobs doctor
 ```
 
-Requires: `curl`, `jq`, `unzip`, `python3`. Optional: [`agent-browser`](https://github.com/vercel-labs/agent-browser).
+Requires: `curl`, `jq`, `unzip`, `python3`.
+
+[`agent-browser`](https://github.com/vercel-labs/agent-browser) is optional and **not** installed by default — it pulls a headless browser, and most career pages parse fine with curl or your agent’s fetch tool. Add it with `--with-browser` (or `npm i -g agent-browser`) if you hit JS-heavy sites.
 
 ### Then use your agent
 
@@ -92,14 +97,15 @@ npx github:hirefrank/network-jobs import ~/Downloads/Connections.zip
 ## CLI
 
 ```bash
-network-jobs setup [--agent auto|all|claude-code,cursor,…]
+network-jobs setup [--agent auto|all|claude-code,cursor,…] [--force] [--with-browser] [-v]
 network-jobs doctor
 network-jobs import <zip-or-csv>
 network-jobs agents
+network-jobs routing   # optional AGENTS.md snippet
 network-jobs which
 ```
 
-Paste [docs/AGENTS.md.snippet](docs/AGENTS.md.snippet) into `CLAUDE.md` / `AGENTS.md` so agents route correctly.
+Each skill carries its own `description`, so agents route to them without extra configuration. If you want the workflow pinned in a project's instructions anyway, `network-jobs routing` prints a snippet for `CLAUDE.md` / `AGENTS.md`.
 
 ## Design notes
 

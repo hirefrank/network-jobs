@@ -28,21 +28,28 @@ Map user queries to these normalized categories:
 
 ### manifest.json
 
+Lives at `~/.network-jobs/corpus/manifest.json`.
+
 ```json
 {
-  "profile (see profile.json)": "hirefrank",        // Advisor's unique identifier
-  "lastUpdated": "2026-01-09T22:30:00Z",  // When data was last refreshed
-  "totalJobs": 430,                  // Total jobs across all categories
+  "lastUpdated": "2026-01-09T22:30:00Z",
+  "totalJobs": 430,
   "categories": {
     "engineering": {
-      "count": 70,                   // Jobs in this category
-      "file": "engineering.json",    // Filename to fetch
-      "lastUpdated": "2026-01-09T22:30:00Z"
+      "count": 70,
+      "file": "engineering.json",
+      "byLocation": {
+        "nyc": {
+          "senior": { "count": 12, "file": "engineering-nyc-senior.json" },
+          "mid": { "count": 9, "file": "engineering-nyc-mid.json" }
+        }
+      }
     }
-    // ... more categories
   }
 }
 ```
+
+Identity (name, email, title) is separate, in `~/.network-jobs/profile.json`.
 
 ### Job Object
 
@@ -105,28 +112,28 @@ Location strings vary by company. Common patterns:
 | `postedAt` | When job was originally posted (from ATS). Use for freshness display. |
 | `firstSeen` | When job was discovered by crawler (fallback if `postedAt` missing) |
 | `lastSeen` | Job still active - confirmed within last crawl |
-| `manifest.lastUpdated` | When network data was last refreshed |
+| `manifest.lastUpdated` | When the local corpus was last rebuilt |
 
 **Freshness logic:**
-- Jobs refreshed every 6 hours
+- The corpus only refreshes when the user runs careers-discover + jobs-ingest
 - Display age using `postedAt` (preferred) or `firstSeen` (fallback)
-- If `lastSeen` is older than 24 hours, job may have been filled
+- If `manifest.lastUpdated` is more than a week old, suggest re-running discovery
 - New jobs: `postedAt` or `firstSeen` within last 7 days
 
 ## Troubleshooting
 
-### Manifest Not Loading
+### Manifest Missing or Empty
 
 ```
-Error: Failed to fetch manifest
+No such file: ~/.network-jobs/corpus/manifest.json
 ```
 
 **Causes:**
-1. Wrong advisor slug
-2. Network connectivity issue
-3. CORS restriction (if running in browser)
+1. `network-jobs setup` was never run
+2. Nothing has been ingested yet (`totalJobs: 0`)
+3. `NETWORK_JOBS_HOME` points somewhere else
 
-**Solution:** Verify advisor slug, try the fetch command directly.
+**Solution:** run `network-jobs doctor`, then **careers-discover** followed by **jobs-ingest**.
 
 ### Empty Results
 
@@ -154,35 +161,34 @@ No category mapping for "nursing"
 
 **Solution:** Explain the network's focus, suggest available categories.
 
-## API Endpoints
+## Corpus Files
 
-**Base URL:** `local corpus under ~/.network-jobs/corpus`
+**Base path:** `${NETWORK_JOBS_HOME:-$HOME/.network-jobs}`
 
-| Endpoint | Purpose |
-|----------|---------|
-| `/{profile (see profile.json)}/advisor.json` | Get advisor info (name, email, title) |
-| `/{profile (see profile.json)}/manifest.json` | Get categories and job counts |
-| `/{profile (see profile.json)}/{category}.json` | Get all jobs in a category |
-| `/{profile (see profile.json)}/{category}-{location}-{seniority}.json` | Get granular subset |
+| Path | Purpose |
+|------|---------|
+| `profile.json` | Your name, email, title (search header + intro footer) |
+| `corpus/manifest.json` | Categories, counts, and the granular file map |
+| `corpus/{category}.json` | All jobs in a category |
+| `corpus/{category}-{location}-{seniority}.json` | Granular shard (preferred read) |
+| `corpus/jobs-all.json` | Flat array of every job (rebuild source) |
+| `companies/companies.json` | Connection graph by company |
 
 **Examples:**
+
 ```bash
-# Get advisor info
-curl -s "local corpus under ~/.network-jobs/corpus/hirefrank/advisor.json"
+DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
 
-# Get manifest
-curl -s "local corpus under ~/.network-jobs/corpus/hirefrank/manifest.json"
-
-# Get engineering jobs
-curl -s "local corpus under ~/.network-jobs/corpus/hirefrank/engineering.json"
-
-# Get senior PM jobs in NYC
-curl -s "local corpus under ~/.network-jobs/corpus/hirefrank/product-nyc-senior.json"
+jq . "$DATA/profile.json"
+jq '.categories | keys' "$DATA/corpus/manifest.json"
+jq 'length' "$DATA/corpus/engineering.json"
+jq '.[] | {title, company, url}' "$DATA/corpus/product-nyc-senior.json"
 ```
 
-## Rate Limits
+## Read Efficiency
 
-No rate limits currently enforced. However:
-- Cache manifest for duration of conversation
-- Fetch only needed category files
-- Don't fetch all 15 categories unless necessary
+Everything is local, so there are no rate limits — but context is finite:
+
+- Read `manifest.json` once per conversation
+- Prefer granular shards over full category files
+- Never read `jobs-all.json` for a search; it is the rebuild source

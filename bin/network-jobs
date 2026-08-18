@@ -17,11 +17,11 @@ usage() {
 Usage: network-jobs <command>
 
 Commands:
-  setup [--agent auto|all|name[,name...]] [--copy] [--yes]
+  setup [--agent auto|all|name,...] [--force] [--copy] [--with-browser] [-v]
       Create ~/.network-jobs and install skills into agent skill dirs
 
   doctor
-      Check tools, data dir, profile, skills links, corpus
+      Check tools, data dir, profile, skill links, corpus
 
   import <zip-or-csv> [--min-count N]
       Parse LinkedIn Connections into the local company graph
@@ -29,12 +29,13 @@ Commands:
   agents
       List supported agents and detection status
 
+  routing
+      Print the optional AGENTS.md / CLAUDE.md routing snippet
+
   which
       Print suite root and data home
 
-Install skills only (multi-agent), then run setup for data:
-  npx skills add hirefrank/network-jobs -g -a claude-code -a cursor -a codex
-  npx github:hirefrank/network-jobs setup
+After setup, day-to-day use happens in your agent — just ask for what you want.
 EOF
 }
 
@@ -56,7 +57,7 @@ cmd_doctor() {
   if command -v agent-browser >/dev/null 2>&1; then
     echo "OK  agent-browser"
   else
-    echo "WARN agent-browser (optional)"
+    echo "WARN agent-browser missing (optional) — network-jobs setup --with-browser"
   fi
   echo
 
@@ -139,6 +140,15 @@ case "$cmd" in
   doctor) cmd_doctor "$@" ;;
   import) cmd_import "$@" ;;
   agents) network_jobs_list_agents ;;
+  routing)
+    snippet="$ROOT/docs/AGENTS.md.snippet"
+    if [[ -f "$snippet" ]]; then
+      cat "$snippet"
+    else
+      echo "ERROR: missing $snippet" >&2
+      exit 1
+    fi
+    ;;
   which)
     echo "suite=$ROOT"
     echo "data=$DATA_HOME"

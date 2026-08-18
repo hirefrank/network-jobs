@@ -16,7 +16,7 @@ Read [SCHEMA.md](../../SCHEMA.md) first. For category mapping details see [refer
 ## Configuration
 
 - **DATA**: `NETWORK_JOBS_HOME` or `~/.network-jobs`
-- **Never** fetch `https://jobs.hirefrank.com` — that hosted export is retired for this suite.
+- This suite has **no hosted API**. Every read is a local file; never fetch a remote job export.
 
 ```bash
 DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"

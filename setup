@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Network Jobs suite installer.
-# Creates ~/.network-jobs and symlinks skills into one or more agent skill dirs.
+# Creates ~/.network-jobs and links skills into one or more agent skill dirs.
 set -euo pipefail
 
 SUITE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,19 +21,24 @@ SKILLS=(
 
 AGENTS_CSV=""
 COPY_MODE=0
-YES=0
+VERBOSE=0
+FORCE=0
+WITH_BROWSER=0
+PRINT_ROUTING=0
 
 usage() {
   cat <<'EOF'
-Usage: setup [--agent name[,name...]|all|auto] [--copy] [--yes]
+Usage: setup [options]
 
-  --agent   Target agents (default: auto = detect installed agents)
-            Examples: claude-code,cursor,codex  |  all  |  auto
-  --copy    Copy skills instead of symlinking
-  --yes     Non-interactive
+  --agent <list>    Target agents: auto (default), all, or claude-code,cursor,…
+  --force           Replace existing non-symlink skill dirs (e.g. older installs)
+  --copy            Copy skills instead of symlinking
+  --with-browser    Also install the optional agent-browser CLI globally
+  --print-routing   Print the AGENTS.md routing snippet when finished
+  --verbose, -v     Show every path as it is linked
+  --help, -h        This message
 
-Also accepts NETWORK_JOBS_SKILLS_DIR as a single explicit skills parent
-(overrides --agent for that one path).
+Env: NETWORK_JOBS_HOME (data dir), NETWORK_JOBS_SKILLS_DIR (single skills parent)
 EOF
 }
 
@@ -42,36 +47,48 @@ while [[ $# -gt 0 ]]; do
     -h|--help) usage; exit 0 ;;
     --agent|--agents) AGENTS_CSV="$2"; shift 2 ;;
     --copy) COPY_MODE=1; shift ;;
-    --yes|-y) YES=1; shift ;;
+    --force) FORCE=1; shift ;;
+    --with-browser) WITH_BROWSER=1; shift ;;
+    --print-routing) PRINT_ROUTING=1; shift ;;
+    -v|--verbose) VERBOSE=1; shift ;;
+    -y|--yes) shift ;;
     *) echo "Unknown arg: $1" >&2; usage; exit 1 ;;
   esac
 done
 
-echo "==> Network Jobs setup"
-echo "    Suite: $SUITE_ROOT"
-echo "    Data:  $DATA_HOME"
-echo
+say() { [[ "$VERBOSE" -eq 1 ]] && echo "$@"; return 0; }
 
 # --- dependency checks ---
 missing=()
 for cmd in curl jq unzip python3; do
-  if ! command -v "$cmd" >/dev/null 2>&1; then
-    missing+=("$cmd")
-  fi
+  command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
 done
 if ((${#missing[@]})); then
-  echo "ERROR: missing required tools: ${missing[*]}"
+  echo "error: missing required tools: ${missing[*]}" >&2
   exit 1
 fi
 
+# --- optional browser automation ---
+browser_note=""
 if command -v agent-browser >/dev/null 2>&1; then
-  echo "OK  agent-browser found"
+  browser_note="agent-browser ready"
+elif [[ "$WITH_BROWSER" -eq 1 ]]; then
+  if command -v npm >/dev/null 2>&1; then
+    echo "Installing agent-browser…"
+    if npm install -g agent-browser >/dev/null 2>&1; then
+      browser_note="agent-browser installed"
+    else
+      browser_note="agent-browser install failed (run: npm i -g agent-browser)"
+    fi
+  else
+    browser_note="npm not found; install agent-browser manually"
+  fi
 else
-  echo "WARN agent-browser not found (optional; use curl/WebFetch for many career pages)"
+  browser_note="agent-browser not installed (optional: setup --with-browser)"
 fi
-echo
 
 # --- data dirs ---
+seeded=0
 mkdir -p \
   "$DATA_HOME/connections" \
   "$DATA_HOME/companies" \
@@ -84,10 +101,12 @@ ASSET_DIR="$SKILLS_SRC/network-jobs-import/assets"
 for f in companies-to-ignore.json company-words-to-ignore.json company-overrides.json; do
   if [[ ! -f "$DATA_HOME/config/$f" && -f "$ASSET_DIR/$f" ]]; then
     cp "$ASSET_DIR/$f" "$DATA_HOME/config/$f"
-    echo "Seeded config/$f"
+    seeded=$((seeded + 1))
+    say "seeded config/$f"
   fi
 done
 
+profile_new=0
 if [[ ! -f "$DATA_HOME/profile.json" ]]; then
   cat > "$DATA_HOME/profile.json" <<'EOF'
 {
@@ -98,7 +117,7 @@ if [[ ! -f "$DATA_HOME/profile.json" ]]; then
   "url": ""
 }
 EOF
-  echo "Created profile.json (fill via network-jobs-setup skill)"
+  profile_new=1
 fi
 
 if [[ ! -f "$DATA_HOME/corpus/manifest.json" ]]; then
@@ -111,7 +130,6 @@ if [[ ! -f "$DATA_HOME/corpus/manifest.json" ]]; then
 EOF
 fi
 
-# Persist suite root for helpers/skills
 echo "$SUITE_ROOT" > "$DATA_HOME/suite-root"
 export NETWORK_JOBS_SUITE="$SUITE_ROOT"
 
@@ -126,17 +144,13 @@ else
   AGENTS_CSV="${AGENTS_CSV:-auto}"
   declare -a agent_names=()
   case "$AGENTS_CSV" in
-    all)
-      agent_names=("${NETWORK_JOBS_AGENT_IDS[@]}")
-      ;;
+    all) agent_names=("${NETWORK_JOBS_AGENT_IDS[@]}") ;;
     auto)
       while IFS= read -r name; do
         [[ -n "$name" ]] && agent_names+=("$name")
       done < <(network_jobs_detect_agents)
       ;;
-    *)
-      IFS=',' read -ra agent_names <<<"$AGENTS_CSV"
-      ;;
+    *) IFS=',' read -ra agent_names <<<"$AGENTS_CSV" ;;
   esac
 
   for name in "${agent_names[@]}"; do
@@ -144,7 +158,7 @@ else
     [[ -z "$name" ]] && continue
     dir="$(network_jobs_agent_dir "$name" || true)"
     if [[ -z "$dir" ]]; then
-      echo "WARN unknown agent '$name' — skip"
+      echo "warning: unknown agent '$name' — skipped" >&2
       continue
     fi
     TARGET_DIRS+=("$dir")
@@ -153,69 +167,107 @@ else
 fi
 
 if ((${#TARGET_DIRS[@]} == 0)); then
-  echo "ERROR: no agent skill directories selected"
+  echo "error: no agent skill directories selected" >&2
   exit 1
 fi
 
+# install_skill: returns 0 linked, 2 skipped
 install_skill() {
   local src="$1" dest="$2"
   mkdir -p "$(dirname "$dest")"
+
   if [[ -L "$dest" ]]; then
     rm -f "$dest"
   elif [[ -e "$dest" ]]; then
     if [[ "$(cd "$dest" 2>/dev/null && pwd)" == "$(cd "$src" && pwd)" ]]; then
-      echo "OK  already present: $dest"
+      say "ok      $dest (already installed)"
       return 0
     fi
-    echo "WARN $dest exists and is not a symlink — skip (remove to relink)"
-    return 0
+    if [[ "$FORCE" -eq 1 ]]; then
+      rm -rf "$dest"
+    else
+      say "skip    $dest (existing directory; use --force to replace)"
+      return 2
+    fi
   fi
+
   if [[ "$COPY_MODE" -eq 1 ]]; then
     rm -rf "$dest"
     cp -R "$src" "$dest"
-    echo "Copied $dest"
+    say "copied  $dest"
   else
     ln -sfn "$src" "$dest"
-    echo "Linked $dest -> $src"
+    say "linked  $dest -> $src"
   fi
+  return 0
 }
 
-echo "==> Installing skills"
+declare -a AGENT_SUMMARY=()
+declare -a SKIPPED=()
+
 for i in "${!TARGET_DIRS[@]}"; do
   parent="${TARGET_DIRS[$i]}"
   label="${TARGET_LABELS[$i]}"
-  echo "---- $label ($parent)"
-  mkdir -p "$parent"
-  # Refuse installing suite root into a path that would collide with skill name
+
   if [[ "$(basename "$parent")" == "network-jobs" ]]; then
-    echo "ERROR: refusing skills parent named network-jobs: $parent"
+    echo "error: skills parent must not be named network-jobs: $parent" >&2
     exit 1
   fi
+
+  mkdir -p "$parent"
+  say "-- $label ($parent)"
+
+  linked=0
+  skipped=0
   for skill in "${SKILLS[@]}"; do
     src="$SKILLS_SRC/$skill"
-    if [[ ! -d "$src" ]]; then
-      echo "WARN missing $src"
-      continue
+    [[ -d "$src" ]] || continue
+    if install_skill "$src" "$parent/$skill"; then
+      linked=$((linked + 1))
+    else
+      skipped=$((skipped + 1))
+      SKIPPED+=("$parent/$skill")
     fi
-    install_skill "$src" "$parent/$skill"
   done
+
+  if ((skipped > 0)); then
+    AGENT_SUMMARY+=("$label ($linked/${#SKILLS[@]})")
+  else
+    AGENT_SUMMARY+=("$label")
+  fi
 done
 
-SNIPPET="$SUITE_ROOT/docs/AGENTS.md.snippet"
-if [[ -f "$SNIPPET" ]]; then
-  echo
-  echo "==> Paste into CLAUDE.md / AGENTS.md / agent instructions:"
-  echo "----"
-  cat "$SNIPPET"
-  echo "----"
-fi
-
 {
-  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) setup ok suite=$SUITE_ROOT data=$DATA_HOME agents=${TARGET_LABELS[*]}"
+  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) setup suite=$SUITE_ROOT data=$DATA_HOME agents=${TARGET_LABELS[*]}"
 } >> "$DATA_HOME/logs/setup.log"
 
+# --- summary ---
+agents_joined=""
+for entry in "${AGENT_SUMMARY[@]}"; do
+  agents_joined+="${agents_joined:+, }$entry"
+done
+
+echo "Network Jobs installed"
+echo "  data     $DATA_HOME$([[ $seeded -gt 0 ]] && echo " (seeded)")"
+echo "  skills   ${#SKILLS[@]} → $agents_joined"
+echo "  browser  $browser_note"
+
+if ((${#SKIPPED[@]} > 0)); then
+  echo
+  echo "  ${#SKIPPED[@]} existing skill dir(s) left untouched (older installs)."
+  echo "  Replace them with: setup --force$([[ $VERBOSE -eq 0 ]] && echo "   (see --verbose for paths)")"
+fi
+
 echo
-echo "Done. Next:"
-echo "  1. Fill profile via the network-jobs-setup skill (in your agent)"
-echo "  2. network-jobs import ~/Downloads/Connections.zip"
-echo "  Or: ask your agent to import your LinkedIn ZIP"
+echo "Next:"
+step=1
+if [[ $profile_new -eq 1 ]]; then
+  echo "  $((step++)). In your agent: \"set up network jobs\" (fills your profile)"
+fi
+echo "  $((step++)). network-jobs import ~/Downloads/Connections.csv"
+echo "  $((step++)). In your agent: \"find open roles at companies I know\""
+
+if [[ "$PRINT_ROUTING" -eq 1 && -f "$SUITE_ROOT/docs/AGENTS.md.snippet" ]]; then
+  echo
+  cat "$SUITE_ROOT/docs/AGENTS.md.snippet"
+fi

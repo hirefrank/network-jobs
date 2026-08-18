@@ -61,4 +61,4 @@ command -v agent-browser || echo "agent-browser optional"
 ## Non-negotiables
 
 - Never send profile or connections to a remote API.
-- Never create a hosted advisor slug or curl `jobs.hirefrank.com`.
+- Never create a hosted account or fetch a remote job export; this suite is local-only.

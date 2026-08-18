@@ -1,13 +1,16 @@
 ## Network Jobs
 
-Local skill suite for warm-intro job search. Data: `~/.network-jobs/` (see SCHEMA.md in the suite).
+Local skill suite for warm-intro job search. All data is on this machine under `~/.network-jobs/`.
+
+Skills are self-describing, so agents normally route on their own. This snippet is only
+useful if you want to pin the workflow explicitly in a project's instructions.
 
 ### Routing
 
 | User intent | Skill |
 |-------------|-------|
 | First install / fill profile / LinkedIn export help | `network-jobs-setup` |
-| Import a LinkedIn connections ZIP | `network-jobs-import` |
+| Import a LinkedIn connections export | `network-jobs-import` |
 | Find career pages + stage open roles | `careers-discover` |
 | Promote triage → searchable corpus | `jobs-ingest` |
 | Search openings in my network | `network-jobs` |
@@ -15,8 +18,8 @@ Local skill suite for warm-intro job search. Data: `~/.network-jobs/` (see SCHEM
 
 ### Rules
 
-- Never curl `jobs.hirefrank.com` — read local files under `~/.network-jobs/` only.
+- There is no hosted API. Read only local files under `~/.network-jobs/`.
 - Never invent job fields (salary, dates) that were not captured.
-- `careers-discover` stages only; wait for user confirm before `jobs-ingest`.
+- `careers-discover` stages only; wait for user confirmation before `jobs-ingest`.
 - Prefer `agent-browser` for JS-heavy career sites; fall back to curl/WebFetch.
-- Helpers ship inside each skill folder (`helpers/`). Suite root is also in `~/.network-jobs/suite-root` after `network-jobs setup`.
+- Helpers ship inside each skill folder (`helpers/`); suite root is in `~/.network-jobs/suite-root`.
