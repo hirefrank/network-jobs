@@ -57,6 +57,7 @@ Always read [SCHEMA.md](../../SCHEMA.md) first.
    - After discover finishes, review triage/ — do not ingest until you say so.
    - Refresh the suite: network-jobs update
    - Health check: network-jobs doctor
+   - Wipe jobs only (keep LinkedIn graph): network-jobs corpus clear --yes
    ```
 
 ## Checks

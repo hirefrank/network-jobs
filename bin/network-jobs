@@ -29,6 +29,9 @@ Commands:
   import <zip-or-csv> [--min-count N]
       Parse LinkedIn Connections into the local company graph
 
+  corpus clear [--triage] [--yes]
+      Empty the searchable corpus (keeps profile + connections); optional triage wipe
+
   reset [--agent auto|all|name,...] [--data] [--purge-cache] [--yes]
       Remove installed skill links (keeps ~/.network-jobs unless --data)
 
@@ -138,6 +141,27 @@ Examples:
 EOF
 }
 
+usage_corpus() {
+  cat <<'EOF'
+Usage: network-jobs corpus clear [--triage] [--yes]
+
+Empty the searchable job corpus under ~/.network-jobs/corpus/ while keeping
+profile, connections, companies, and config.
+
+Options:
+  --triage     Also delete staged careers-* folders under triage/
+  --yes, -y    Skip confirmation
+  --help, -h   Show this help
+
+Resets corpus/manifest.json to totalJobs=0 and removes jobs-all.json plus
+category / granular shard files. Does not uninstall skills.
+
+Examples:
+  network-jobs corpus clear --yes
+  network-jobs corpus clear --triage --yes
+EOF
+}
+
 usage_reset() {
   cat <<'EOF'
 Usage: network-jobs reset [options]
@@ -205,6 +229,7 @@ cmd_help() {
     update) usage_update ;;
     doctor) usage_doctor ;;
     import) usage_import ;;
+    corpus) usage_corpus ;;
     reset|uninstall) usage_reset ;;
     agents) usage_agents ;;
     routing) usage_routing ;;
@@ -538,6 +563,102 @@ cmd_import() {
   "$helper" "$input" --out "$DATA_HOME" "$@"
 }
 
+cmd_corpus_clear() {
+  local wipe_triage=0 yes=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --triage) wipe_triage=1; shift ;;
+      -y|--yes) yes=1; shift ;;
+      -h|--help) usage_corpus; return 0 ;;
+      *)
+        echo "Unknown arg: $1" >&2
+        echo "Try: network-jobs corpus clear --help" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  local corpus="$DATA_HOME/corpus"
+  local triage="$DATA_HOME/triage"
+
+  echo "This will remove:"
+  echo "  searchable corpus under $corpus"
+  if [[ "$wipe_triage" -eq 1 ]]; then
+    echo "  staged triage under $triage/careers-*"
+  else
+    echo "  (keeping triage/ — pass --triage to wipe staged batches)"
+  fi
+  echo "  (keeping profile, connections, companies, config)"
+  echo
+
+  if [[ "$yes" -ne 1 ]]; then
+    if [[ ! -t 0 ]]; then
+      echo "error: non-interactive shell — pass --yes to confirm" >&2
+      return 1
+    fi
+    printf "Continue? [y/N] "
+    local answer
+    read -r answer
+    case "$answer" in
+      y|Y|yes|YES) ;;
+      *) echo "Aborted."; return 1 ;;
+    esac
+  fi
+
+  mkdir -p "$corpus"
+  local removed=0 path
+  shopt -s nullglob
+  for path in "$corpus"/*.json "$corpus"/.work; do
+    [[ -e "$path" || -L "$path" ]] || continue
+    rm -rf "$path"
+    echo "removed $path"
+    removed=$((removed + 1))
+  done
+  shopt -u nullglob
+
+  cat > "$corpus/manifest.json" <<'EOF'
+{
+  "lastUpdated": null,
+  "totalJobs": 0,
+  "categories": {}
+}
+EOF
+  echo "wrote $corpus/manifest.json (empty)"
+
+  if [[ "$wipe_triage" -eq 1 ]]; then
+    mkdir -p "$triage"
+    shopt -s nullglob
+    for path in "$triage"/careers-*; do
+      rm -rf "$path"
+      echo "removed $path"
+      removed=$((removed + 1))
+    done
+    shopt -u nullglob
+  fi
+
+  {
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) corpus clear triage=$wipe_triage"
+  } >> "$DATA_HOME/logs/setup.log" 2>/dev/null || true
+
+  echo
+  echo "Corpus cleared ($removed paths removed)."
+  echo "Next: in your agent, run careers-discover, review triage, then confirm ingest."
+}
+
+cmd_corpus() {
+  local sub="${1:-}"
+  shift || true
+  case "$sub" in
+    ""|-h|--help|help) usage_corpus ;;
+    clear) cmd_corpus_clear "$@" ;;
+    *)
+      echo "Unknown corpus command: $sub" >&2
+      echo "Try: network-jobs corpus clear --help" >&2
+      return 1
+      ;;
+  esac
+}
+
 cmd_agents() {
   if network_jobs_want_help "$@"; then
     usage_agents
@@ -598,6 +719,7 @@ case "$cmd" in
   update) cmd_update "$@" ;;
   doctor) cmd_doctor "$@" ;;
   import) cmd_import "$@" ;;
+  corpus) cmd_corpus "$@" ;;
   reset) cmd_reset "$@" ;;
   uninstall) cmd_reset --data "$@" ;;
   agents) cmd_agents "$@" ;;

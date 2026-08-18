@@ -109,6 +109,7 @@ network-jobs setup [--agent auto|all|claude-code,cursor,…] [--force] [--no-bro
 network-jobs update [--agent …] [--force] [--no-browser]   # latest main + relink
 network-jobs doctor
 network-jobs import <zip-or-csv>
+network-jobs corpus clear [--triage] [--yes]              # empty searchable corpus; keep profile/graph
 network-jobs reset [--data] [--purge-cache] [--yes]   # remove skill links; --data also wipes ~/.network-jobs
 network-jobs uninstall [--yes]                        # alias for reset --data
 network-jobs agents
@@ -117,6 +118,14 @@ network-jobs which
 ```
 
 Each skill carries its own `description`, so agents route to them without extra configuration. If you want the workflow pinned in a project's instructions anyway, `network-jobs routing` prints a snippet you can paste into your agent's instruction file.
+
+To empty jobs without wiping your LinkedIn graph:
+
+```bash
+network-jobs corpus clear --yes
+# or also drop staged batches:
+network-jobs corpus clear --triage --yes
+```
 
 To refresh an existing install:
 
