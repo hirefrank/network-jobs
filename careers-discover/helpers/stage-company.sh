@@ -53,14 +53,15 @@ if overrides_path.exists():
 norm = basic_normalize(name)
 norm = overrides.get(norm, norm)
 
-# Prefer slug from companies.json when name or normalized matches
+# Prefer slug from companies.json when normalized name matches (after overrides).
+# Do not match on raw display name — that bypasses overrides (e.g. Facebook → Meta).
 if companies_path.exists():
     companies = json.loads(companies_path.read_text())
     if isinstance(companies, list):
         for c in companies:
             cname = c.get("name") or ""
             cnorm = c.get("normalized") or basic_normalize(cname)
-            if basic_normalize(cname) == norm or cnorm == norm or cname.lower() == name.lower():
+            if cnorm == norm or basic_normalize(cname) == norm:
                 print(c.get("slug") or slugify(cnorm))
                 raise SystemExit(0)
 

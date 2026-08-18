@@ -34,9 +34,11 @@ def load_jobs(path: Path):
     return data
 
 def load_existing_jobs() -> list:
-    """Prefer jobs-all.json; if missing, reconstruct from category shard files."""
+    """Prefer non-empty jobs-all.json; otherwise reconstruct from shard files."""
     if existing_path.exists():
-        return load_jobs(existing_path)
+        existing = load_jobs(existing_path)
+        if existing:
+            return existing
 
     by_url = {}
     manifest_path = corpus / "manifest.json"
@@ -56,12 +58,9 @@ def load_existing_jobs() -> list:
         except json.JSONDecodeError:
             pass
 
-    # Also scan category-only shards (engineering.json) if manifest incomplete
     for path in corpus.glob("*.json"):
         if path.name in {"manifest.json", "jobs-all.json"}:
             continue
-        # Prefer category files (no location/seniority suffix pattern of 3+ parts
-        # is fine — reading all non-reserved shards is safest for recovery)
         shard_names.add(path.name)
 
     for name in sorted(shard_names):
