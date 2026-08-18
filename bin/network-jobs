@@ -14,7 +14,7 @@ shift || true
 
 usage() {
   cat <<'EOF'
-Usage: network-jobs <command>
+Usage: network-jobs [--help] <command> [options]
 
 Commands:
   setup [--agent auto|all|name,...] [--force] [--copy] [--with-browser] [-v]
@@ -26,10 +26,10 @@ Commands:
   import <zip-or-csv> [--min-count N]
       Parse LinkedIn Connections into the local company graph
 
-  reset [--agent auto|all|name,...] [--data] [--yes]
+  reset [--agent auto|all|name,...] [--data] [--purge-cache] [--yes]
       Remove installed skill links (keeps ~/.network-jobs unless --data)
 
-  uninstall [--agent auto|all|name,...] [--yes]
+  uninstall [--agent auto|all|name,...] [--purge-cache] [--yes]
       Full wipe: skills + ~/.network-jobs (same as reset --data)
 
   agents
@@ -41,8 +41,174 @@ Commands:
   which
       Print suite root and data home
 
-After setup, day-to-day use happens in your agent — just ask for what you want.
+  help [command]
+      Show this help, or detailed help for one command
+
+Global:
+  -h, --help     Show this help
+  -V, --version  Print package version
+
+Env:
+  NETWORK_JOBS_HOME        Data directory (default: ~/.network-jobs)
+  NETWORK_JOBS_SKILLS_DIR  Install skills into this single parent only
+
+Day-to-day use happens in your agent. The CLI is for install, doctor, and import.
 EOF
+}
+
+usage_setup() {
+  cat <<'EOF'
+Usage: network-jobs setup [options]
+
+Create ~/.network-jobs and link skills into one or more agent skill directories.
+
+Options:
+  --agent <list>    Target agents: auto (default), all, or claude-code,cursor,…
+  --force           Replace existing non-symlink skill dirs (e.g. older installs)
+  --copy            Copy skills instead of symlinking
+  --with-browser    Also install the optional agent-browser CLI globally
+  --print-routing   Print the AGENTS.md routing snippet when finished
+  --verbose, -v     Show every path as it is linked
+  --help, -h        Show this help
+
+Env:
+  NETWORK_JOBS_HOME        Data directory (default: ~/.network-jobs)
+  NETWORK_JOBS_SKILLS_DIR  Single skills parent (overrides --agent)
+EOF
+}
+
+usage_doctor() {
+  cat <<'EOF'
+Usage: network-jobs doctor
+
+Check required tools, the data directory, profile completeness, skill links,
+and corpus status. Exit 0 when healthy, 1 when issues are found.
+
+Options:
+  --help, -h   Show this help
+EOF
+}
+
+usage_import() {
+  cat <<'EOF'
+Usage: network-jobs import <zip-or-csv> [--min-count N]
+
+Parse a LinkedIn Connections export (ZIP or Connections.csv) into:
+  ~/.network-jobs/connections/connections.json
+  ~/.network-jobs/companies/companies.json
+
+Options:
+  --min-count N   Only keep companies with at least N connections (default: 1)
+  --help, -h      Show this help
+
+Examples:
+  network-jobs import ~/Downloads/Connections.zip
+  network-jobs import ./fixtures/Connections.csv --min-count 2
+EOF
+}
+
+usage_reset() {
+  cat <<'EOF'
+Usage: network-jobs reset [options]
+       network-jobs uninstall [options]
+
+Remove installed skill links from agent skill directories.
+
+Options:
+  --agent <list>   Target agents: auto (default), all, or claude-code,cursor,…
+  --data           Also delete ~/.network-jobs (connections, corpus, profile)
+  --purge-cache    Also clear cached npx/pnpm copies of this suite
+  --yes, -y        Skip confirmation
+  --help, -h       Show this help
+
+uninstall is an alias for reset --data.
+
+Examples:
+  network-jobs reset --yes
+  network-jobs uninstall --yes --purge-cache
+  npx github:hirefrank/network-jobs setup --agent auto
+EOF
+}
+
+usage_agents() {
+  cat <<'EOF'
+Usage: network-jobs agents
+
+List supported agents, their skill directories, and whether each was detected
+on this machine (tab-separated: name, path, status).
+
+Options:
+  --help, -h   Show this help
+EOF
+}
+
+usage_routing() {
+  cat <<'EOF'
+Usage: network-jobs routing
+
+Print the optional AGENTS.md / CLAUDE.md routing snippet. Skills already
+self-describe via frontmatter; this is only if you want the workflow pinned
+in a project's instructions.
+
+Options:
+  --help, -h   Show this help
+EOF
+}
+
+usage_which() {
+  cat <<'EOF'
+Usage: network-jobs which
+
+Print the suite root and data home paths.
+
+Options:
+  --help, -h   Show this help
+EOF
+}
+
+cmd_help() {
+  local topic="${1:-}"
+  case "$topic" in
+    "" ) usage ;;
+    setup) usage_setup ;;
+    doctor) usage_doctor ;;
+    import) usage_import ;;
+    reset|uninstall) usage_reset ;;
+    agents) usage_agents ;;
+    routing) usage_routing ;;
+    which) usage_which ;;
+    help)
+      cat <<'EOF'
+Usage: network-jobs help [command]
+
+Show top-level help, or detailed help for one command.
+EOF
+      ;;
+    *)
+      echo "Unknown command: $topic" >&2
+      echo "Try: network-jobs --help" >&2
+      return 1
+      ;;
+  esac
+}
+
+network_jobs_want_help() {
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      -h|--help|help) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+network_jobs_version() {
+  local pkg="$ROOT/package.json"
+  if [[ -f "$pkg" ]] && command -v jq >/dev/null 2>&1; then
+    jq -r '"network-jobs " + (.version // "0.0.0")' "$pkg"
+  else
+    echo "network-jobs"
+  fi
 }
 
 network_jobs_resolve_agents() {
@@ -78,22 +244,10 @@ cmd_reset() {
       --data|--wipe-data) wipe_data=1; shift ;;
       --purge-cache) purge_cache=1; shift ;;
       -y|--yes) yes=1; shift ;;
-      -h|--help)
-        cat <<'EOF'
-Usage: network-jobs reset [options]
-       network-jobs uninstall [options]
-
-  --agent <list>   Target agents: auto (default), all, or claude-code,cursor,…
-  --data           Also delete ~/.network-jobs (connections, corpus, profile)
-  --purge-cache    Also clear cached npx/pnpm copies of this suite
-  --yes, -y        Skip confirmation
-
-uninstall is an alias for reset --data.
-EOF
-        return 0
-        ;;
+      -h|--help) usage_reset; return 0 ;;
       *)
         echo "Unknown arg: $1" >&2
+        echo "Try: network-jobs reset --help" >&2
         return 1
         ;;
     esac
@@ -178,7 +332,6 @@ EOF
         echo "removed $cache"
       fi
     done
-    # Best-effort: drop pnpm/npm dlx entries that contain this package name
     if [[ -d "$HOME/.cache/pnpm/dlx" ]]; then
       find "$HOME/.cache/pnpm/dlx" -maxdepth 2 -iname '*network-jobs*' -exec rm -rf {} + 2>/dev/null || true
       echo "cleared matching pnpm dlx entries (best-effort)"
@@ -195,17 +348,27 @@ EOF
 }
 
 cmd_doctor() {
+  if network_jobs_want_help "$@"; then
+    usage_doctor
+    return 0
+  fi
+  if [[ $# -gt 0 ]]; then
+    echo "Unknown arg: $1" >&2
+    echo "Try: network-jobs doctor --help" >&2
+    return 1
+  fi
+
   local ok=1
   echo "==> Network Jobs doctor"
   echo "    Suite: $ROOT"
   echo "    Data:  $DATA_HOME"
   echo
 
-  for cmd in curl jq unzip python3; do
-    if command -v "$cmd" >/dev/null 2>&1; then
-      echo "OK  $cmd"
+  for tool in curl jq unzip python3; do
+    if command -v "$tool" >/dev/null 2>&1; then
+      echo "OK  $tool"
     else
-      echo "MISS $cmd"
+      echo "MISS $tool"
       ok=0
     fi
   done
@@ -251,7 +414,7 @@ cmd_doctor() {
 
   echo
   echo "==> Skill links"
-  local entry a_name a_dir a_hint skill linked
+  local a_name a_dir a_hint skill linked
   while IFS= read -r line; do
     IFS=$'\t' read -r a_name a_dir a_hint <<<"$line"
     [[ -z "$a_hint" ]] && continue
@@ -274,45 +437,93 @@ cmd_doctor() {
 }
 
 cmd_import() {
+  if network_jobs_want_help "$@"; then
+    usage_import
+    return 0
+  fi
+
   local input="${1:-}"
   if [[ -z "$input" ]]; then
-    echo "Usage: network-jobs import <zip-or-csv> [--min-count N]" >&2
-    exit 1
+    usage_import >&2
+    return 1
   fi
   shift || true
   local helper="$ROOT/skills/network-jobs-import/helpers/parse-linkedin.sh"
   if [[ ! -x "$helper" ]]; then
     echo "ERROR: missing $helper" >&2
-    exit 1
+    return 1
   fi
   mkdir -p "$DATA_HOME"
   "$helper" "$input" --out "$DATA_HOME" "$@"
 }
 
+cmd_agents() {
+  if network_jobs_want_help "$@"; then
+    usage_agents
+    return 0
+  fi
+  if [[ $# -gt 0 ]]; then
+    echo "Unknown arg: $1" >&2
+    echo "Try: network-jobs agents --help" >&2
+    return 1
+  fi
+  network_jobs_list_agents
+}
+
+cmd_routing() {
+  if network_jobs_want_help "$@"; then
+    usage_routing
+    return 0
+  fi
+  if [[ $# -gt 0 ]]; then
+    echo "Unknown arg: $1" >&2
+    echo "Try: network-jobs routing --help" >&2
+    return 1
+  fi
+  local snippet="$ROOT/docs/AGENTS.md.snippet"
+  if [[ -f "$snippet" ]]; then
+    cat "$snippet"
+  else
+    echo "ERROR: missing $snippet" >&2
+    return 1
+  fi
+}
+
+cmd_which() {
+  if network_jobs_want_help "$@"; then
+    usage_which
+    return 0
+  fi
+  if [[ $# -gt 0 ]]; then
+    echo "Unknown arg: $1" >&2
+    echo "Try: network-jobs which --help" >&2
+    return 1
+  fi
+  echo "suite=$ROOT"
+  echo "data=$DATA_HOME"
+}
+
 case "$cmd" in
-  ""|-h|--help|help) usage ;;
-  setup) exec "$ROOT/setup" "$@" ;;
+  ""|-h|--help) usage ;;
+  -V|--version|version) network_jobs_version ;;
+  help) cmd_help "$@" ;;
+  setup)
+    if network_jobs_want_help "$@"; then
+      usage_setup
+    else
+      exec "$ROOT/setup" "$@"
+    fi
+    ;;
   doctor) cmd_doctor "$@" ;;
   import) cmd_import "$@" ;;
   reset) cmd_reset "$@" ;;
   uninstall) cmd_reset --data "$@" ;;
-  agents) network_jobs_list_agents ;;
-  routing)
-    snippet="$ROOT/docs/AGENTS.md.snippet"
-    if [[ -f "$snippet" ]]; then
-      cat "$snippet"
-    else
-      echo "ERROR: missing $snippet" >&2
-      exit 1
-    fi
-    ;;
-  which)
-    echo "suite=$ROOT"
-    echo "data=$DATA_HOME"
-    ;;
+  agents) cmd_agents "$@" ;;
+  routing) cmd_routing "$@" ;;
+  which) cmd_which "$@" ;;
   *)
     echo "Unknown command: $cmd" >&2
-    usage
+    echo "Try: network-jobs --help" >&2
     exit 1
     ;;
 esac

@@ -20,17 +20,22 @@ PRINT_ROUTING=0
 
 usage() {
   cat <<'EOF'
-Usage: setup [options]
+Usage: network-jobs setup [options]
 
+Create ~/.network-jobs and link skills into one or more agent skill directories.
+
+Options:
   --agent <list>    Target agents: auto (default), all, or claude-code,cursor,…
   --force           Replace existing non-symlink skill dirs (e.g. older installs)
   --copy            Copy skills instead of symlinking
   --with-browser    Also install the optional agent-browser CLI globally
   --print-routing   Print the AGENTS.md routing snippet when finished
   --verbose, -v     Show every path as it is linked
-  --help, -h        This message
+  --help, -h        Show this help
 
-Env: NETWORK_JOBS_HOME (data dir), NETWORK_JOBS_SKILLS_DIR (single skills parent)
+Env:
+  NETWORK_JOBS_HOME        Data directory (default: ~/.network-jobs)
+  NETWORK_JOBS_SKILLS_DIR  Single skills parent (overrides --agent)
 EOF
 }
 
