@@ -33,10 +33,51 @@ def load_jobs(path: Path):
         raise SystemExit(f"{path} must be a JSON array")
     return data
 
+def load_existing_jobs() -> list:
+    """Prefer jobs-all.json; if missing, reconstruct from category shard files."""
+    if existing_path.exists():
+        return load_jobs(existing_path)
+
+    by_url = {}
+    manifest_path = corpus / "manifest.json"
+    shard_names = set()
+    if manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text())
+            for cat, meta in (manifest.get("categories") or {}).items():
+                if isinstance(meta, dict) and meta.get("file"):
+                    shard_names.add(meta["file"])
+                for loc_meta in (meta.get("byLocation") or {}).values():
+                    if not isinstance(loc_meta, dict):
+                        continue
+                    for sen_meta in loc_meta.values():
+                        if isinstance(sen_meta, dict) and sen_meta.get("file"):
+                            shard_names.add(sen_meta["file"])
+        except json.JSONDecodeError:
+            pass
+
+    # Also scan category-only shards (engineering.json) if manifest incomplete
+    for path in corpus.glob("*.json"):
+        if path.name in {"manifest.json", "jobs-all.json"}:
+            continue
+        # Prefer category files (no location/seniority suffix pattern of 3+ parts
+        # is fine — reading all non-reserved shards is safest for recovery)
+        shard_names.add(path.name)
+
+    for name in sorted(shard_names):
+        path = corpus / name
+        if not path.exists():
+            continue
+        for j in load_jobs(path):
+            url = (j.get("url") or "").strip()
+            if url:
+                by_url[url] = j
+    return list(by_url.values())
+
 incoming = load_jobs(all_path)
 # Merge: existing first, then incoming (incoming overwrites same URL)
 by_url = {}
-for j in load_jobs(existing_path):
+for j in load_existing_jobs():
     url = (j.get("url") or "").strip()
     if url:
         by_url[url] = j
