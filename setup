@@ -375,6 +375,11 @@ echo "  data     $DATA_HOME$([[ $seeded -gt 0 ]] && echo " (seeded)")"
 echo "  skills   ${#SKILLS[@]} → $agents_joined"
 echo "  browser  $browser_note"
 echo "  cli      $launcher_note"
+if [[ -f "$DATA_HOME/version" ]]; then
+  echo "  version  $(cat "$DATA_HOME/version")"
+elif [[ -f "$SUITE_ROOT/package.json" ]] && command -v jq >/dev/null 2>&1; then
+  echo "  version  $(jq -r '.version // "?"' "$SUITE_ROOT/package.json")"
+fi
 
 if ((${#SKIPPED[@]} > 0)); then
   echo
@@ -385,16 +390,42 @@ fi
 echo
 echo "Next:"
 step=1
-if [[ $profile_new -eq 1 ]]; then
-  echo "  $((step++)). In your agent: \"set up network jobs\" (fills your profile)"
-fi
 if command -v network-jobs >/dev/null 2>&1; then
   cli_invocation="network-jobs"
 else
-  cli_invocation="npx 'github:hirefrank/network-jobs#main'"
+  cli_invocation="npx --yes 'github:hirefrank/network-jobs#main'"
 fi
-echo "  $((step++)). $cli_invocation import ~/Downloads/Connections.csv"
-echo "  $((step++)). In your agent: \"find open roles at companies I know\""
+
+has_resume=0
+if [[ -f "$DATA_HOME/resume/text.md" ]] || compgen -G "$DATA_HOME/resume/source.*" >/dev/null 2>&1; then
+  has_resume=1
+fi
+profile_name=""
+profile_email=""
+if [[ -f "$DATA_HOME/profile.json" ]]; then
+  profile_name="$(jq -r '.name // empty' "$DATA_HOME/profile.json" 2>/dev/null || true)"
+  profile_email="$(jq -r '.email // empty' "$DATA_HOME/profile.json" 2>/dev/null || true)"
+fi
+prefs_done=false
+if [[ -f "$DATA_HOME/preferences.json" ]]; then
+  prefs_done="$(jq -r '.interviewComplete // false' "$DATA_HOME/preferences.json" 2>/dev/null || echo false)"
+fi
+has_companies=0
+if [[ -f "$DATA_HOME/companies/companies.json" ]]; then
+  company_count="$(jq 'length' "$DATA_HOME/companies/companies.json" 2>/dev/null || echo 0)"
+  [[ "$company_count" != "0" && "$company_count" != "null" ]] && has_companies=1
+fi
+
+if [[ "$has_resume" -eq 0 ]]; then
+  echo "  $((step++)). $cli_invocation profile import ~/path/to/resume.pdf"
+fi
+if [[ -z "$profile_name" || -z "$profile_email" || "$prefs_done" != "true" ]]; then
+  echo "  $((step++)). In your agent: \"set up network jobs from my resume\" (profile + prefs interview)"
+fi
+if [[ "$has_companies" -eq 0 ]]; then
+  echo "  $((step++)). $cli_invocation import ~/Downloads/Connections.zip"
+fi
+echo "  $((step++)). In your agent: \"find open roles at companies I know\" (review triage before ingest)"
 
 if [[ "$PRINT_ROUTING" -eq 1 && -f "$SUITE_ROOT/docs/AGENTS.md.snippet" ]]; then
   echo

@@ -723,8 +723,9 @@ cmd_profile_import() {
   mkdir -p "$DATA_HOME"
   "$helper" "$input" "$DATA_HOME"
   echo
-  echo "Next: in your agent — \"set up network jobs from my resume\" (fills profile,"
-  echo "then interviews you on location / remote / hybrid / role prefs)."
+  echo "Next: in your agent — \"set up network jobs from my resume\""
+  echo "  (fills profile, then a prefs interview: location, remote/hybrid,"
+  echo "   IC vs manager, former employers include/exclude, …)."
 }
 
 cmd_profile_show() {
