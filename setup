@@ -9,15 +9,7 @@ source "$SUITE_ROOT/lib/agents.sh"
 
 DATA_HOME="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
 SKILLS_SRC="$SUITE_ROOT/skills"
-
-SKILLS=(
-  network-jobs-setup
-  network-jobs-import
-  careers-discover
-  jobs-ingest
-  network-jobs
-  intro-email-generator
-)
+SKILLS=("${NETWORK_JOBS_SKILL_IDS[@]}")
 
 AGENTS_CSV=""
 COPY_MODE=0

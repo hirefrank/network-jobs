@@ -26,6 +26,12 @@ Commands:
   import <zip-or-csv> [--min-count N]
       Parse LinkedIn Connections into the local company graph
 
+  reset [--agent auto|all|name,...] [--data] [--yes]
+      Remove installed skill links (keeps ~/.network-jobs unless --data)
+
+  uninstall [--agent auto|all|name,...] [--yes]
+      Full wipe: skills + ~/.network-jobs (same as reset --data)
+
   agents
       List supported agents and detection status
 
@@ -37,6 +43,155 @@ Commands:
 
 After setup, day-to-day use happens in your agent — just ask for what you want.
 EOF
+}
+
+network_jobs_resolve_agents() {
+  local csv="${1:-auto}"
+  local -a names=()
+  local name
+  case "$csv" in
+    all) names=("${NETWORK_JOBS_AGENT_IDS[@]}") ;;
+    auto)
+      while IFS= read -r name; do
+        [[ -n "$name" ]] && names+=("$name")
+      done < <(network_jobs_detect_agents)
+      ;;
+    *)
+      IFS=',' read -ra names <<<"$csv"
+      ;;
+  esac
+  for name in "${names[@]}"; do
+    name="$(echo "$name" | xargs)"
+    [[ -n "$name" ]] && printf '%s\n' "$name"
+  done
+}
+
+cmd_reset() {
+  local agents_csv="auto"
+  local wipe_data=0
+  local yes=0
+  local purge_cache=0
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --agent|--agents) agents_csv="$2"; shift 2 ;;
+      --data|--wipe-data) wipe_data=1; shift ;;
+      --purge-cache) purge_cache=1; shift ;;
+      -y|--yes) yes=1; shift ;;
+      -h|--help)
+        cat <<'EOF'
+Usage: network-jobs reset [options]
+       network-jobs uninstall [options]
+
+  --agent <list>   Target agents: auto (default), all, or claude-code,cursor,…
+  --data           Also delete ~/.network-jobs (connections, corpus, profile)
+  --purge-cache    Also clear cached npx/pnpm copies of this suite
+  --yes, -y        Skip confirmation
+
+uninstall is an alias for reset --data.
+EOF
+        return 0
+        ;;
+      *)
+        echo "Unknown arg: $1" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  local -a agent_names=()
+  local name dir skill dest
+  while IFS= read -r name; do
+    [[ -n "$name" ]] && agent_names+=("$name")
+  done < <(network_jobs_resolve_agents "$agents_csv")
+
+  if ((${#agent_names[@]} == 0)); then
+    echo "error: no agents selected" >&2
+    return 1
+  fi
+
+  echo "This will remove:"
+  for name in "${agent_names[@]}"; do
+    dir="$(network_jobs_agent_dir "$name" || true)"
+    [[ -z "$dir" ]] && continue
+    echo "  skills in $dir ($name)"
+  done
+  if [[ "$wipe_data" -eq 1 ]]; then
+    echo "  data dir $DATA_HOME"
+  else
+    echo "  (keeping data dir $DATA_HOME — pass --data to wipe)"
+  fi
+  if [[ "$purge_cache" -eq 1 ]]; then
+    echo "  cached npx/pnpm copies of @hirefrank/network-jobs"
+  fi
+  echo
+
+  if [[ "$yes" -ne 1 ]]; then
+    if [[ ! -t 0 ]]; then
+      echo "error: non-interactive shell — pass --yes to confirm" >&2
+      return 1
+    fi
+    printf "Continue? [y/N] "
+    local answer
+    read -r answer
+    case "$answer" in
+      y|Y|yes|YES) ;;
+      *) echo "Aborted."; return 1 ;;
+    esac
+  fi
+
+  local removed=0 skipped=0
+  for name in "${agent_names[@]}"; do
+    dir="$(network_jobs_agent_dir "$name" || true)"
+    if [[ -z "$dir" ]]; then
+      echo "warning: unknown agent '$name' — skipped" >&2
+      continue
+    fi
+    for skill in "${NETWORK_JOBS_SKILL_IDS[@]}"; do
+      dest="$dir/$skill"
+      if [[ -L "$dest" || -e "$dest" ]]; then
+        rm -rf "$dest"
+        echo "removed $dest"
+        removed=$((removed + 1))
+      else
+        skipped=$((skipped + 1))
+      fi
+    done
+  done
+
+  if [[ "$wipe_data" -eq 1 ]]; then
+    if [[ -e "$DATA_HOME" || -L "$DATA_HOME" ]]; then
+      rm -rf "$DATA_HOME"
+      echo "removed $DATA_HOME"
+    else
+      echo "no data dir at $DATA_HOME"
+    fi
+  fi
+
+  if [[ "$purge_cache" -eq 1 ]]; then
+    local cache
+    for cache in \
+      "$HOME/.local/share/pnpm/store/v11/links/@hirefrank/network-jobs"
+    do
+      if [[ -e "$cache" || -L "$cache" ]]; then
+        rm -rf "$cache"
+        echo "removed $cache"
+      fi
+    done
+    # Best-effort: drop pnpm/npm dlx entries that contain this package name
+    if [[ -d "$HOME/.cache/pnpm/dlx" ]]; then
+      find "$HOME/.cache/pnpm/dlx" -maxdepth 2 -iname '*network-jobs*' -exec rm -rf {} + 2>/dev/null || true
+      echo "cleared matching pnpm dlx entries (best-effort)"
+    fi
+  fi
+
+  echo
+  echo "Reset complete ($removed removed)."
+  if [[ "$wipe_data" -eq 1 ]]; then
+    echo "Reinstall: npx github:hirefrank/network-jobs setup --agent auto"
+  else
+    echo "Re-link skills: network-jobs setup --agent auto"
+  fi
 }
 
 cmd_doctor() {
@@ -101,12 +256,12 @@ cmd_doctor() {
     IFS=$'\t' read -r a_name a_dir a_hint <<<"$line"
     [[ -z "$a_hint" ]] && continue
     linked=0
-    for skill in network-jobs-setup network-jobs-import careers-discover jobs-ingest network-jobs intro-email-generator; do
+    for skill in "${NETWORK_JOBS_SKILL_IDS[@]}"; do
       if [[ -e "$a_dir/$skill/SKILL.md" ]]; then
         linked=$((linked + 1))
       fi
     done
-    echo "$a_name: $linked/6 skills in $a_dir"
+    echo "$a_name: $linked/${#NETWORK_JOBS_SKILL_IDS[@]} skills in $a_dir"
   done < <(network_jobs_list_agents)
 
   echo
@@ -139,6 +294,8 @@ case "$cmd" in
   setup) exec "$ROOT/setup" "$@" ;;
   doctor) cmd_doctor "$@" ;;
   import) cmd_import "$@" ;;
+  reset) cmd_reset "$@" ;;
+  uninstall) cmd_reset --data "$@" ;;
   agents) network_jobs_list_agents ;;
   routing)
     snippet="$ROOT/docs/AGENTS.md.snippet"

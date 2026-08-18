@@ -14,6 +14,16 @@ NETWORK_JOBS_AGENT_IDS=(
   agents
 )
 
+# Skill folders this suite installs (must match skills/ and setup).
+NETWORK_JOBS_SKILL_IDS=(
+  network-jobs-setup
+  network-jobs-import
+  careers-discover
+  jobs-ingest
+  network-jobs
+  intro-email-generator
+)
+
 network_jobs_agent_dir() {
   local name="$1"
   case "$name" in

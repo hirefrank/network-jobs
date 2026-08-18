@@ -100,12 +100,21 @@ npx github:hirefrank/network-jobs import ~/Downloads/Connections.zip
 network-jobs setup [--agent auto|all|claude-code,cursor,…] [--force] [--with-browser] [-v]
 network-jobs doctor
 network-jobs import <zip-or-csv>
+network-jobs reset [--data] [--purge-cache] [--yes]   # remove skill links; --data also wipes ~/.network-jobs
+network-jobs uninstall [--yes]                        # alias for reset --data
 network-jobs agents
 network-jobs routing   # optional AGENTS.md snippet
 network-jobs which
 ```
 
 Each skill carries its own `description`, so agents route to them without extra configuration. If you want the workflow pinned in a project's instructions anyway, `network-jobs routing` prints a snippet for `CLAUDE.md` / `AGENTS.md`.
+
+To start over:
+
+```bash
+network-jobs uninstall --yes --purge-cache
+npx github:hirefrank/network-jobs setup --agent auto
+```
 
 ## Design notes
 
