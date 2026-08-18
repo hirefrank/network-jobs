@@ -203,7 +203,24 @@ if [[ "$INSTALL_LAUNCHER" -eq 1 ]]; then
   done
   [[ -z "$launcher_dir" ]] && launcher_dir="$HOME/.local/bin"
 
+  # A package runner (pnpm dlx / npx) prepends its own temporary node_modules/.bin
+  # to PATH, so `command -v` finds a network-jobs that vanishes when we exit.
+  # Only a copy outside those caches counts as already installed.
+  cli_is_ephemeral() {
+    local found="$1" real
+    real="$(readlink -f "$found" 2>/dev/null || echo "$found")"
+    case "$found$real" in
+      *"/.cache/pnpm/dlx/"*|*"/.npm/_npx/"*|*"/pnpm/store/"*) return 0 ;;
+    esac
+    [[ "$real" == "$SUITE_ROOT/bin/network-jobs" ]] && return 0
+    return 1
+  }
+
   existing_cli="$(command -v network-jobs 2>/dev/null || true)"
+  if [[ -n "$existing_cli" ]] && cli_is_ephemeral "$existing_cli"; then
+    existing_cli=""
+  fi
+
   if [[ -n "$existing_cli" && ! -e "$launcher_dir/network-jobs" ]]; then
     launcher_note="network-jobs already on PATH ($existing_cli)"
   else
