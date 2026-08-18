@@ -70,9 +70,11 @@ Use [`helpers/stage-company.sh`](helpers/stage-company.sh) to mkdir + write skel
    - Caveats (bot wall, partial pagination, uncertain domain)
    - Next steps (“ready for jobs-ingest?” / “need recipe”)
 
-7. **Hand off**
-   - Point at the triage dir
+7. **Hand off (hard stop)**
+   - Point at each triage dir and summarize counts / caveats from `INVENTORY.md`
    - Ask whether to run `jobs-ingest` on this batch
+   - **STOP.** Do **not** invoke `jobs-ingest`, rebuild the corpus, or resume a job search in the same turn.
+   - Only after the user explicitly confirms (e.g. “ingest these”, “promote the Google batch”) should you load **jobs-ingest**.
 
 ## Bot / fetch tiers
 

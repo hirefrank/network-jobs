@@ -1,6 +1,6 @@
 ---
 name: jobs-ingest
-description: Promote Network Jobs triage batches into the local searchable corpus. Use after careers-discover when the user confirms a triage folder should be ingested.
+description: Promote Network Jobs triage batches into the local searchable corpus. Use ONLY after the user explicitly confirms a triage folder should be ingested — never auto-chain from careers-discover.
 license: MIT
 allowed-tools: Bash(*)
 metadata:
@@ -16,6 +16,10 @@ Read [SCHEMA.md](../../SCHEMA.md) first.
 ## Gate
 
 **Do not ingest without explicit user confirmation** for the triage path(s).
+
+- Confirmation looks like: “ingest these”, “promote the Slack batch”, “yes, put them in the corpus”.
+- Not confirmation: the user earlier saying “run careers-discover”, finishing background agents, or you planning a full pipeline.
+- If unsure, list staged dirs + listing counts and ask.
 
 ## Workflow
 

@@ -48,7 +48,20 @@ jq -r '"\(.name)|\(.title)|\(.company)|\(.email)"' "$DATA/profile.json"
 jq . "$DATA/corpus/manifest.json"
 ```
 
-If `manifest.totalJobs` is 0 or `lastUpdated` is null, tell the user to run **careers-discover** + **jobs-ingest** first (and **network-jobs-import** if companies are empty).
+### Empty / first-run gate (STOP here)
+
+If `companies/companies.json` is missing → run **network-jobs-import** (or ask for a LinkedIn ZIP). Do not invent a graph.
+
+If `profile.json` `name` or `email` is empty → run **network-jobs-setup** (or ask) **before** promising search headers / intro footers. Discovery can proceed without a profile; search + intros should not.
+
+If `manifest.totalJobs` is 0 or `lastUpdated` is null:
+
+1. Tell the user the corpus is empty.
+2. Offer **careers-discover** only (stage openings under `triage/`).
+3. **Do not** chain into **jobs-ingest** yourself. After discovery finishes, stop and show staged triage; wait for explicit “ingest this batch” (or equivalent) before loading **jobs-ingest**.
+4. Only after ingest completes, resume search with this skill.
+
+Never say you will “discover then ingest then search” in one uninterrupted pass.
 
 ### Pattern A: "Do I have connections at [Company]?"
 
