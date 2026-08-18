@@ -446,6 +446,11 @@ cmd_doctor() {
   else
     echo "WARN agent-browser missing — network-jobs update   (or: npm i -g agent-browser)"
   fi
+  if command -v network-jobs >/dev/null 2>&1; then
+    echo "OK  network-jobs on PATH ($(command -v network-jobs))"
+  else
+    echo "WARN network-jobs not on PATH — run setup again, or add ~/.local/bin to PATH"
+  fi
   echo
 
   for p in connections companies config triage corpus logs; do

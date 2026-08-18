@@ -17,6 +17,7 @@ VERBOSE=0
 FORCE=0
 WITH_BROWSER=1
 PRINT_ROUTING=0
+INSTALL_LAUNCHER=1
 
 usage() {
   cat <<'EOF'
@@ -30,6 +31,7 @@ Options:
   --copy            Copy skills instead of symlinking
   --no-browser      Skip installing agent-browser when missing
   --with-browser    Install agent-browser if missing (default)
+  --no-launcher     Skip installing the network-jobs launcher on PATH
   --print-routing   Print the AGENTS.md routing snippet when finished
   --verbose, -v     Show every path as it is linked
   --help, -h        Show this help
@@ -48,6 +50,7 @@ while [[ $# -gt 0 ]]; do
     --force) FORCE=1; shift ;;
     --with-browser) WITH_BROWSER=1; shift ;;
     --no-browser) WITH_BROWSER=0; shift ;;
+    --no-launcher) INSTALL_LAUNCHER=0; shift ;;
     --print-routing) PRINT_ROUTING=1; shift ;;
     -v|--verbose) VERBOSE=1; shift ;;
     -y|--yes) shift ;;
@@ -67,24 +70,71 @@ if ((${#missing[@]})); then
   exit 1
 fi
 
+# --- npm resolution -------------------------------------------------------
+# `npm` is often a version-manager shim (mise/asdf) that fails when no global
+# runtime is selected, so fall back to a real npm inside an installed runtime.
+resolve_npm() {
+  if command -v npm >/dev/null 2>&1 && npm --version >/dev/null 2>&1; then
+    command -v npm
+    return 0
+  fi
+  local -a candidates=()
+  local pattern cand
+  for pattern in \
+    "$HOME/.local/share/mise/installs/node/"*/bin/npm \
+    "$HOME/.asdf/installs/nodejs/"*/bin/npm \
+    "$HOME/.nvm/versions/node/"*/bin/npm \
+    /usr/local/bin/npm /usr/bin/npm
+  do
+    [[ -x "$pattern" ]] && candidates+=("$pattern")
+  done
+  if ((${#candidates[@]})); then
+    for cand in $(printf '%s\n' "${candidates[@]}" | sort -V -r); do
+      if "$cand" --version >/dev/null 2>&1; then
+        echo "$cand"
+        return 0
+      fi
+    done
+  fi
+  return 1
+}
+
+# Make freshly installed global bins visible to this process.
+refresh_tool_path() {
+  local npm_bin="$1" prefix
+  if command -v mise >/dev/null 2>&1; then
+    mise reshim >/dev/null 2>&1 || true
+  fi
+  prefix="$("$npm_bin" prefix -g 2>/dev/null || true)"
+  if [[ -n "$prefix" && -d "$prefix/bin" ]]; then
+    case ":$PATH:" in
+      *":$prefix/bin:"*) ;;
+      *) PATH="$prefix/bin:$PATH"; export PATH ;;
+    esac
+  fi
+  hash -r 2>/dev/null || true
+}
+
 # --- browser automation (default on; needed for JS-heavy career pages) ---
 browser_note=""
 if command -v agent-browser >/dev/null 2>&1; then
   browser_note="agent-browser ready"
 elif [[ "$WITH_BROWSER" -eq 1 ]]; then
-  if command -v npm >/dev/null 2>&1; then
+  if NPM_BIN="$(resolve_npm)"; then
     echo "Installing agent-browser…"
-    if npm install -g agent-browser; then
+    if "$NPM_BIN" install -g agent-browser >/dev/null 2>&1; then
+      refresh_tool_path "$NPM_BIN"
       if command -v agent-browser >/dev/null 2>&1; then
         browser_note="agent-browser installed"
       else
-        browser_note="agent-browser installed but not on PATH yet (restart shell)"
+        npm_prefix="$("$NPM_BIN" prefix -g 2>/dev/null || true)"
+        browser_note="agent-browser installed to ${npm_prefix:-npm global}/bin (add it to PATH)"
       fi
     else
-      browser_note="agent-browser install failed (run: npm i -g agent-browser)"
+      browser_note="agent-browser install failed (run: $NPM_BIN i -g agent-browser)"
     fi
   else
-    browser_note="npm not found; install agent-browser manually (npm i -g agent-browser)"
+    browser_note="no usable npm found — install node, then: npm i -g agent-browser"
   fi
 else
   browser_note="agent-browser skipped (--no-browser)"
@@ -137,6 +187,47 @@ echo "$SUITE_ROOT" > "$DATA_HOME/suite-root"
 export NETWORK_JOBS_SUITE="$SUITE_ROOT"
 if [[ -f "$SUITE_ROOT/package.json" ]] && command -v jq >/dev/null 2>&1; then
   jq -r '.version // "0.0.0"' "$SUITE_ROOT/package.json" > "$DATA_HOME/version"
+fi
+
+# --- CLI launcher ---------------------------------------------------------
+# npx installs leave no `network-jobs` on PATH, so drop in a small launcher.
+# It resolves the suite recorded in suite-root and falls back to npx, which
+# keeps working even after an npx store path is garbage collected.
+launcher_note=""
+if [[ "$INSTALL_LAUNCHER" -eq 1 ]]; then
+  launcher_dir=""
+  for candidate in "$HOME/.local/bin" "$HOME/bin"; do
+    case ":$PATH:" in
+      *":$candidate:"*) launcher_dir="$candidate"; break ;;
+    esac
+  done
+  [[ -z "$launcher_dir" ]] && launcher_dir="$HOME/.local/bin"
+
+  existing_cli="$(command -v network-jobs 2>/dev/null || true)"
+  if [[ -n "$existing_cli" && ! -e "$launcher_dir/network-jobs" ]]; then
+    launcher_note="network-jobs already on PATH ($existing_cli)"
+  else
+    mkdir -p "$launcher_dir"
+    cat > "$launcher_dir/network-jobs" <<'LAUNCHER'
+#!/usr/bin/env bash
+# network-jobs launcher — resolves the installed suite, falls back to npx.
+set -euo pipefail
+data="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
+root="$(cat "$data/suite-root" 2>/dev/null || true)"
+if [[ -n "$root" && -x "$root/bin/network-jobs" ]]; then
+  exec "$root/bin/network-jobs" "$@"
+fi
+exec npx --yes 'github:hirefrank/network-jobs#main' "$@"
+LAUNCHER
+    chmod +x "$launcher_dir/network-jobs"
+    hash -r 2>/dev/null || true
+    case ":$PATH:" in
+      *":$launcher_dir:"*) launcher_note="network-jobs → $launcher_dir/network-jobs" ;;
+      *) launcher_note="network-jobs → $launcher_dir/network-jobs (add $launcher_dir to PATH)" ;;
+    esac
+  fi
+else
+  launcher_note="launcher skipped (--no-launcher)"
 fi
 
 # --- resolve target skill parents ---
@@ -257,6 +348,7 @@ echo "Network Jobs installed"
 echo "  data     $DATA_HOME$([[ $seeded -gt 0 ]] && echo " (seeded)")"
 echo "  skills   ${#SKILLS[@]} → $agents_joined"
 echo "  browser  $browser_note"
+echo "  cli      $launcher_note"
 
 if ((${#SKIPPED[@]} > 0)); then
   echo
@@ -270,10 +362,16 @@ step=1
 if [[ $profile_new -eq 1 ]]; then
   echo "  $((step++)). In your agent: \"set up network jobs\" (fills your profile)"
 fi
-echo "  $((step++)). network-jobs import ~/Downloads/Connections.csv"
+if command -v network-jobs >/dev/null 2>&1; then
+  cli_invocation="network-jobs"
+else
+  cli_invocation="npx 'github:hirefrank/network-jobs#main'"
+fi
+echo "  $((step++)). $cli_invocation import ~/Downloads/Connections.csv"
 echo "  $((step++)). In your agent: \"find open roles at companies I know\""
 
 if [[ "$PRINT_ROUTING" -eq 1 && -f "$SUITE_ROOT/docs/AGENTS.md.snippet" ]]; then
   echo
   cat "$SUITE_ROOT/docs/AGENTS.md.snippet"
 fi
+
