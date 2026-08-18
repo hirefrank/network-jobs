@@ -11,7 +11,7 @@ metadata:
 
 Orchestration only: discover a company's careers surface, extract open roles, stage under `triage/`. Does **not** write the corpus — that is `jobs-ingest` after user confirmation.
 
-Read [SCHEMA.md](../SCHEMA.md) first. Pattern inspired by Provenance `source-scrape`.
+Read [SCHEMA.md](../../SCHEMA.md) first. Pattern inspired by Provenance `source-scrape`.
 
 ## When to use
 

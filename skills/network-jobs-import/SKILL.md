@@ -11,7 +11,7 @@ metadata:
 
 Turn a LinkedIn connections export into local `connections.json` + `companies.json`.
 
-Read [SCHEMA.md](../SCHEMA.md) first.
+Read [SCHEMA.md](../../SCHEMA.md) first.
 
 ## Inputs
 
@@ -24,10 +24,16 @@ Read [SCHEMA.md](../SCHEMA.md) first.
 2. **Run the parser** (deterministic — do not reimplement CSV parsing in prose):
 
 ```bash
-HELPER="$(dirname "$0")/helpers/parse-linkedin.sh"
-# When invoked via skill symlink, resolve suite helper:
-HELPER="${NETWORK_JOBS_SUITE:-$HOME/.claude/skills/network-jobs-suite}/network-jobs-import/helpers/parse-linkedin.sh"
 DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
+# Prefer the CLI when available:
+network-jobs import "/path/to/linkedin.zip"
+
+# Or call the helper that ships with this skill (works when the skill is symlinked):
+HELPER="$(dirname "$0")/helpers/parse-linkedin.sh"
+# When running from an agent without dirname context, resolve via suite root:
+SUITE="$(cat "${NETWORK_JOBS_HOME:-$HOME/.network-jobs}/suite-root" 2>/dev/null || true)"
+SUITE="${NETWORK_JOBS_SUITE:-${SUITE:-}}"
+HELPER="${HELPER:-$SUITE/skills/network-jobs-import/helpers/parse-linkedin.sh}"
 
 "$HELPER" "/path/to/linkedin.zip" --out "$DATA"
 ```

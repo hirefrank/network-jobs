@@ -25,13 +25,13 @@ Tracked as deferred work from the Local Network Jobs Skills plan. The Cloudflare
 
 ### 3. Public skills
 
-- [ ] Publish this repo as `hirefrank/network-jobs`
+- [ ] Keep this repo as `hirefrank/network-jobs`
 - [ ] Deprecate hosted-dependent skill in `hirefrank/skills` with a README pointer here
-- [ ] Announce one-paste install:
+- [ ] Announce install:
 
 ```bash
-git clone --depth 1 https://github.com/hirefrank/network-jobs.git ~/.claude/skills/network-jobs-suite \
-  && cd ~/.claude/skills/network-jobs-suite && ./setup
+npx skills add hirefrank/network-jobs -g -a claude-code -a cursor -a codex
+npx github:hirefrank/network-jobs setup --agent auto
 ```
 
 ## Out of scope for decommission PR

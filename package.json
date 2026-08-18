@@ -1,0 +1,37 @@
+{
+  "name": "@hirefrank/network-jobs",
+  "version": "1.0.0",
+  "description": "Local-first Network Jobs skill suite: LinkedIn connections → career pages → warm intros",
+  "license": "MIT",
+  "bin": {
+    "network-jobs": "./bin/network-jobs"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "skills/",
+    "docs/",
+    "fixtures/",
+    "setup",
+    "SCHEMA.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hirefrank/network-jobs.git"
+  },
+  "homepage": "https://github.com/hirefrank/network-jobs",
+  "keywords": [
+    "skills",
+    "claude-code",
+    "cursor",
+    "codex",
+    "jobs",
+    "linkedin",
+    "agent-skills"
+  ]
+}

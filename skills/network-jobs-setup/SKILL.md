@@ -10,7 +10,7 @@ metadata:
 
 Onboard a user onto the local Network Jobs suite. No cloud account.
 
-Always read [SCHEMA.md](../SCHEMA.md) first.
+Always read [SCHEMA.md](../../SCHEMA.md) first.
 
 ## Data home
 
@@ -20,7 +20,12 @@ Always read [SCHEMA.md](../SCHEMA.md) first.
 
 1. **Verify install**
    - Confirm suite skills are discoverable (`network-jobs-import`, `careers-discover`, `jobs-ingest`, `network-jobs`, `intro-email-generator`).
-   - If missing, tell the user to run `./setup` from the suite clone (see README).
+   - If missing, tell the user to run:
+     ```bash
+     npx skills add hirefrank/network-jobs -g -a claude-code -a cursor -a codex
+     npx github:hirefrank/network-jobs setup --agent auto
+     ```
+     or `network-jobs setup --agent auto` / `network-jobs doctor`.
    - Confirm dirs exist: `connections/`, `companies/`, `triage/`, `corpus/`, `config/`, `logs/`.
 
 2. **Fill profile.json**

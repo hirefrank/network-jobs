@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+# network-jobs — local CLI for setup, doctor, and LinkedIn import.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib/agents.sh
+source "$ROOT/lib/agents.sh"
+
+DATA_HOME="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
+export NETWORK_JOBS_SUITE="${NETWORK_JOBS_SUITE:-$ROOT}"
+
+cmd="${1:-}"
+shift || true
+
+usage() {
+  cat <<'EOF'
+Usage: network-jobs <command>
+
+Commands:
+  setup [--agent auto|all|name[,name...]] [--copy] [--yes]
+      Create ~/.network-jobs and install skills into agent skill dirs
+
+  doctor
+      Check tools, data dir, profile, skills links, corpus
+
+  import <zip-or-csv> [--min-count N]
+      Parse LinkedIn Connections into the local company graph
+
+  agents
+      List supported agents and detection status
+
+  which
+      Print suite root and data home
+
+Install skills only (multi-agent), then run setup for data:
+  npx skills add hirefrank/network-jobs -g -a claude-code -a cursor -a codex
+  npx github:hirefrank/network-jobs setup
+EOF
+}
+
+cmd_doctor() {
+  local ok=1
+  echo "==> Network Jobs doctor"
+  echo "    Suite: $ROOT"
+  echo "    Data:  $DATA_HOME"
+  echo
+
+  for cmd in curl jq unzip python3; do
+    if command -v "$cmd" >/dev/null 2>&1; then
+      echo "OK  $cmd"
+    else
+      echo "MISS $cmd"
+      ok=0
+    fi
+  done
+  if command -v agent-browser >/dev/null 2>&1; then
+    echo "OK  agent-browser"
+  else
+    echo "WARN agent-browser (optional)"
+  fi
+  echo
+
+  for p in connections companies config triage corpus logs; do
+    if [[ -d "$DATA_HOME/$p" ]]; then
+      echo "OK  $DATA_HOME/$p"
+    else
+      echo "MISS $DATA_HOME/$p — run: network-jobs setup"
+      ok=0
+    fi
+  done
+
+  if [[ -f "$DATA_HOME/profile.json" ]]; then
+    local name email
+    name="$(jq -r '.name // empty' "$DATA_HOME/profile.json" 2>/dev/null || true)"
+    email="$(jq -r '.email // empty' "$DATA_HOME/profile.json" 2>/dev/null || true)"
+    if [[ -n "$name" && -n "$email" ]]; then
+      echo "OK  profile ($name / $email)"
+    else
+      echo "WARN profile.json incomplete (name/email) — use network-jobs-setup skill"
+    fi
+  else
+    echo "MISS profile.json"
+    ok=0
+  fi
+
+  if [[ -f "$DATA_HOME/companies/companies.json" ]]; then
+    echo "OK  companies ($(jq 'length' "$DATA_HOME/companies/companies.json") entries)"
+  else
+    echo "WARN no companies.json — run network-jobs import"
+  fi
+
+  if [[ -f "$DATA_HOME/corpus/manifest.json" ]]; then
+    echo "OK  corpus totalJobs=$(jq -r '.totalJobs // 0' "$DATA_HOME/corpus/manifest.json")"
+  fi
+
+  echo
+  echo "==> Skill links"
+  local entry a_name a_dir a_hint skill linked
+  while IFS= read -r line; do
+    IFS=$'\t' read -r a_name a_dir a_hint <<<"$line"
+    [[ -z "$a_hint" ]] && continue
+    linked=0
+    for skill in network-jobs-setup network-jobs-import careers-discover jobs-ingest network-jobs intro-email-generator; do
+      if [[ -e "$a_dir/$skill/SKILL.md" ]]; then
+        linked=$((linked + 1))
+      fi
+    done
+    echo "$a_name: $linked/6 skills in $a_dir"
+  done < <(network_jobs_list_agents)
+
+  echo
+  if [[ "$ok" -eq 1 ]]; then
+    echo "Doctor: OK"
+    return 0
+  fi
+  echo "Doctor: issues found"
+  return 1
+}
+
+cmd_import() {
+  local input="${1:-}"
+  if [[ -z "$input" ]]; then
+    echo "Usage: network-jobs import <zip-or-csv> [--min-count N]" >&2
+    exit 1
+  fi
+  shift || true
+  local helper="$ROOT/skills/network-jobs-import/helpers/parse-linkedin.sh"
+  if [[ ! -x "$helper" ]]; then
+    echo "ERROR: missing $helper" >&2
+    exit 1
+  fi
+  mkdir -p "$DATA_HOME"
+  "$helper" "$input" --out "$DATA_HOME" "$@"
+}
+
+case "$cmd" in
+  ""|-h|--help|help) usage ;;
+  setup) exec "$ROOT/setup" "$@" ;;
+  doctor) cmd_doctor "$@" ;;
+  import) cmd_import "$@" ;;
+  agents) network_jobs_list_agents ;;
+  which)
+    echo "suite=$ROOT"
+    echo "data=$DATA_HOME"
+    ;;
+  *)
+    echo "Unknown command: $cmd" >&2
+    usage
+    exit 1
+    ;;
+esac

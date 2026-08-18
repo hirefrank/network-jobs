@@ -11,7 +11,7 @@ metadata:
 
 Normalize staged listings → `~/.network-jobs/corpus/` shards + `manifest.json`.
 
-Read [SCHEMA.md](../SCHEMA.md) first.
+Read [SCHEMA.md](../../SCHEMA.md) first.
 
 ## Gate
 
@@ -52,9 +52,12 @@ Read [SCHEMA.md](../SCHEMA.md) first.
 
 ```bash
 DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
-SUITE="${NETWORK_JOBS_SUITE:-$HOME/.claude/skills/network-jobs-suite}"
+SUITE="$(cat "$DATA/suite-root" 2>/dev/null || true)"
+SUITE="${NETWORK_JOBS_SUITE:-${SUITE:-}}"
 # After normalizing a triage batch to $DATA/corpus/.work/batch.json:
-"$SUITE/jobs-ingest/helpers/rebuild-corpus.sh" "$DATA/corpus/.work/batch.json"
+"$SUITE/skills/jobs-ingest/helpers/rebuild-corpus.sh" "$DATA/corpus/.work/batch.json"
+# Or, from this skill's own helpers/ when the skill dir is on disk:
+# ./helpers/rebuild-corpus.sh "$DATA/corpus/.work/batch.json"
 ```
 
 The helper merges by URL with existing `corpus/jobs-all.json`, shards by category/location/seniority, rewrites `manifest.json`, and removes stale shard files.

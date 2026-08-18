@@ -11,7 +11,7 @@ metadata:
 
 Search job openings at companies where you have connections — from your **local** corpus under `~/.network-jobs/`.
 
-Read [SCHEMA.md](../SCHEMA.md) first. For category mapping details see [reference.md](reference.md).
+Read [SCHEMA.md](../../SCHEMA.md) first. For category mapping details see [reference.md](reference.md).
 
 ## Configuration
 

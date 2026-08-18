@@ -1,23 +1,14 @@
 #!/usr/bin/env bash
-# Network Jobs suite installer (gstack-style).
-# Symlinks skills into the agent skills dir and creates ~/.network-jobs/.
+# Network Jobs suite installer.
+# Creates ~/.network-jobs and symlinks skills into one or more agent skill dirs.
 set -euo pipefail
 
 SUITE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DATA_HOME="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
+# shellcheck source=lib/agents.sh
+source "$SUITE_ROOT/lib/agents.sh"
 
-# Detect agent skills parent (Claude Code default; override with NETWORK_JOBS_SKILLS_DIR)
-SKILLS_PARENT="${NETWORK_JOBS_SKILLS_DIR:-}"
-if [[ -z "$SKILLS_PARENT" ]]; then
-  if [[ -d "$HOME/.claude/skills" ]]; then
-    SKILLS_PARENT="$HOME/.claude/skills"
-  elif [[ -d "$HOME/.agents/skills" ]]; then
-    SKILLS_PARENT="$HOME/.agents/skills"
-  else
-    SKILLS_PARENT="$HOME/.claude/skills"
-    mkdir -p "$SKILLS_PARENT"
-  fi
-fi
+DATA_HOME="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
+SKILLS_SRC="$SUITE_ROOT/skills"
 
 SKILLS=(
   network-jobs-setup
@@ -28,45 +19,57 @@ SKILLS=(
   intro-email-generator
 )
 
+AGENTS_CSV=""
+COPY_MODE=0
+YES=0
+
+usage() {
+  cat <<'EOF'
+Usage: setup [--agent name[,name...]|all|auto] [--copy] [--yes]
+
+  --agent   Target agents (default: auto = detect installed agents)
+            Examples: claude-code,cursor,codex  |  all  |  auto
+  --copy    Copy skills instead of symlinking
+  --yes     Non-interactive
+
+Also accepts NETWORK_JOBS_SKILLS_DIR as a single explicit skills parent
+(overrides --agent for that one path).
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help) usage; exit 0 ;;
+    --agent|--agents) AGENTS_CSV="$2"; shift 2 ;;
+    --copy) COPY_MODE=1; shift ;;
+    --yes|-y) YES=1; shift ;;
+    *) echo "Unknown arg: $1" >&2; usage; exit 1 ;;
+  esac
+done
+
 echo "==> Network Jobs setup"
-echo "    Suite:  $SUITE_ROOT"
-echo "    Data:   $DATA_HOME"
-echo "    Skills: $SKILLS_PARENT"
+echo "    Suite: $SUITE_ROOT"
+echo "    Data:  $DATA_HOME"
 echo
 
 # --- dependency checks ---
 missing=()
-for cmd in curl jq unzip; do
+for cmd in curl jq unzip python3; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     missing+=("$cmd")
   fi
 done
 if ((${#missing[@]})); then
   echo "ERROR: missing required tools: ${missing[*]}"
-  echo "Install them and re-run ./setup"
   exit 1
 fi
 
 if command -v agent-browser >/dev/null 2>&1; then
-  echo "OK  agent-browser found (recommended for JS-heavy career sites)"
+  echo "OK  agent-browser found"
 else
-  echo "WARN agent-browser not found — careers-discover can still use curl/WebFetch;"
-  echo "     install agent-browser for SPA career pages: https://github.com/vercel-labs/agent-browser"
+  echo "WARN agent-browser not found (optional; use curl/WebFetch for many career pages)"
 fi
 echo
-
-# Suite must NOT live at $SKILLS_PARENT/network-jobs — that path is reserved for the
-# search skill symlink. Canonical clone path: $SKILLS_PARENT/network-jobs-suite
-if [[ "$(basename "$SUITE_ROOT")" == "network-jobs" ]] && \
-   [[ "$(cd "$SUITE_ROOT/.." && pwd)" == "$(cd "$SKILLS_PARENT" && pwd)" ]]; then
-  echo "ERROR: suite is cloned as $SUITE_ROOT"
-  echo "That path blocks linking the nested network-jobs search skill."
-  echo
-  echo "Move it, then re-run setup:"
-  echo "  mv \"$SUITE_ROOT\" \"$SKILLS_PARENT/network-jobs-suite\""
-  echo "  cd \"$SKILLS_PARENT/network-jobs-suite\" && ./setup"
-  exit 1
-fi
 
 # --- data dirs ---
 mkdir -p \
@@ -77,8 +80,7 @@ mkdir -p \
   "$DATA_HOME/corpus" \
   "$DATA_HOME/logs"
 
-# Seed ignore lists from suite assets if user has none
-ASSET_DIR="$SUITE_ROOT/network-jobs-import/assets"
+ASSET_DIR="$SKILLS_SRC/network-jobs-import/assets"
 for f in companies-to-ignore.json company-words-to-ignore.json company-overrides.json; do
   if [[ ! -f "$DATA_HOME/config/$f" && -f "$ASSET_DIR/$f" ]]; then
     cp "$ASSET_DIR/$f" "$DATA_HOME/config/$f"
@@ -86,7 +88,6 @@ for f in companies-to-ignore.json company-words-to-ignore.json company-overrides
   fi
 done
 
-# Profile stub
 if [[ ! -f "$DATA_HOME/profile.json" ]]; then
   cat > "$DATA_HOME/profile.json" <<'EOF'
 {
@@ -97,10 +98,9 @@ if [[ ! -f "$DATA_HOME/profile.json" ]]; then
   "url": ""
 }
 EOF
-  echo "Created profile.json (fill via network-jobs-setup)"
+  echo "Created profile.json (fill via network-jobs-setup skill)"
 fi
 
-# Empty corpus manifest if missing
 if [[ ! -f "$DATA_HOME/corpus/manifest.json" ]]; then
   cat > "$DATA_HOME/corpus/manifest.json" <<'EOF'
 {
@@ -111,49 +111,111 @@ if [[ ! -f "$DATA_HOME/corpus/manifest.json" ]]; then
 EOF
 fi
 
-# --- symlink skills ---
-mkdir -p "$SKILLS_PARENT"
+# Persist suite root for helpers/skills
+echo "$SUITE_ROOT" > "$DATA_HOME/suite-root"
+export NETWORK_JOBS_SUITE="$SUITE_ROOT"
 
-for skill in "${SKILLS[@]}"; do
-  src="$SUITE_ROOT/$skill"
-  dest="$SKILLS_PARENT/$skill"
-  if [[ ! -d "$src" ]]; then
-    echo "WARN missing skill dir: $src"
-    continue
-  fi
+# --- resolve target skill parents ---
+declare -a TARGET_DIRS=()
+declare -a TARGET_LABELS=()
 
-  # Never link over the suite root itself
-  if [[ -e "$dest" ]] && [[ "$(cd "$dest" 2>/dev/null && pwd)" == "$SUITE_ROOT" ]]; then
-    echo "ERROR: $dest is the suite root; cannot link skill '$skill' there."
-    echo "Install the suite at $SKILLS_PARENT/network-jobs-suite instead."
-    exit 1
-  fi
+if [[ -n "${NETWORK_JOBS_SKILLS_DIR:-}" ]]; then
+  TARGET_DIRS+=("$NETWORK_JOBS_SKILLS_DIR")
+  TARGET_LABELS+=("custom")
+else
+  AGENTS_CSV="${AGENTS_CSV:-auto}"
+  declare -a agent_names=()
+  case "$AGENTS_CSV" in
+    all)
+      agent_names=("${NETWORK_JOBS_AGENT_IDS[@]}")
+      ;;
+    auto)
+      while IFS= read -r name; do
+        [[ -n "$name" ]] && agent_names+=("$name")
+      done < <(network_jobs_detect_agents)
+      ;;
+    *)
+      IFS=',' read -ra agent_names <<<"$AGENTS_CSV"
+      ;;
+  esac
 
+  for name in "${agent_names[@]}"; do
+    name="$(echo "$name" | xargs)"
+    [[ -z "$name" ]] && continue
+    dir="$(network_jobs_agent_dir "$name" || true)"
+    if [[ -z "$dir" ]]; then
+      echo "WARN unknown agent '$name' — skip"
+      continue
+    fi
+    TARGET_DIRS+=("$dir")
+    TARGET_LABELS+=("$name")
+  done
+fi
+
+if ((${#TARGET_DIRS[@]} == 0)); then
+  echo "ERROR: no agent skill directories selected"
+  exit 1
+fi
+
+install_skill() {
+  local src="$1" dest="$2"
+  mkdir -p "$(dirname "$dest")"
   if [[ -L "$dest" ]]; then
     rm -f "$dest"
   elif [[ -e "$dest" ]]; then
-    echo "WARN $dest exists and is not a symlink — skipping (remove it to relink)"
-    continue
+    if [[ "$(cd "$dest" 2>/dev/null && pwd)" == "$(cd "$src" && pwd)" ]]; then
+      echo "OK  already present: $dest"
+      return 0
+    fi
+    echo "WARN $dest exists and is not a symlink — skip (remove to relink)"
+    return 0
   fi
+  if [[ "$COPY_MODE" -eq 1 ]]; then
+    rm -rf "$dest"
+    cp -R "$src" "$dest"
+    echo "Copied $dest"
+  else
+    ln -sfn "$src" "$dest"
+    echo "Linked $dest -> $src"
+  fi
+}
 
-  ln -sfn "$src" "$dest"
-  echo "Linked $dest -> $src"
+echo "==> Installing skills"
+for i in "${!TARGET_DIRS[@]}"; do
+  parent="${TARGET_DIRS[$i]}"
+  label="${TARGET_LABELS[$i]}"
+  echo "---- $label ($parent)"
+  mkdir -p "$parent"
+  # Refuse installing suite root into a path that would collide with skill name
+  if [[ "$(basename "$parent")" == "network-jobs" ]]; then
+    echo "ERROR: refusing skills parent named network-jobs: $parent"
+    exit 1
+  fi
+  for skill in "${SKILLS[@]}"; do
+    src="$SKILLS_SRC/$skill"
+    if [[ ! -d "$src" ]]; then
+      echo "WARN missing $src"
+      continue
+    fi
+    install_skill "$src" "$parent/$skill"
+  done
 done
 
-# --- CLAUDE.md snippet ---
-SNIPPET="$SUITE_ROOT/docs/CLAUDE.md.snippet"
+SNIPPET="$SUITE_ROOT/docs/AGENTS.md.snippet"
 if [[ -f "$SNIPPET" ]]; then
   echo
-  echo "==> Paste this into your project's CLAUDE.md (or ~/.claude/CLAUDE.md):"
+  echo "==> Paste into CLAUDE.md / AGENTS.md / agent instructions:"
   echo "----"
   cat "$SNIPPET"
   echo "----"
 fi
 
 {
-  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) setup ok suite=$SUITE_ROOT data=$DATA_HOME skills=$SKILLS_PARENT"
+  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) setup ok suite=$SUITE_ROOT data=$DATA_HOME agents=${TARGET_LABELS[*]}"
 } >> "$DATA_HOME/logs/setup.log"
 
 echo
-echo "Done. Next: open Claude Code and run the network-jobs-setup skill."
-echo "Or: ask Claude to 'set up network jobs' / 'import my LinkedIn connections zip'."
+echo "Done. Next:"
+echo "  1. Fill profile via the network-jobs-setup skill (in your agent)"
+echo "  2. network-jobs import ~/Downloads/Connections.zip"
+echo "  Or: ask your agent to import your LinkedIn ZIP"

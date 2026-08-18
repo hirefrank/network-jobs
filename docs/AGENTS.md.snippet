@@ -1,0 +1,22 @@
+## Network Jobs
+
+Local skill suite for warm-intro job search. Data: `~/.network-jobs/` (see SCHEMA.md in the suite).
+
+### Routing
+
+| User intent | Skill |
+|-------------|-------|
+| First install / fill profile / LinkedIn export help | `network-jobs-setup` |
+| Import a LinkedIn connections ZIP | `network-jobs-import` |
+| Find career pages + stage open roles | `careers-discover` |
+| Promote triage → searchable corpus | `jobs-ingest` |
+| Search openings in my network | `network-jobs` |
+| Draft a forwardable warm intro | `intro-email-generator` |
+
+### Rules
+
+- Never curl `jobs.hirefrank.com` — read local files under `~/.network-jobs/` only.
+- Never invent job fields (salary, dates) that were not captured.
+- `careers-discover` stages only; wait for user confirm before `jobs-ingest`.
+- Prefer `agent-browser` for JS-heavy career sites; fall back to curl/WebFetch.
+- Helpers ship inside each skill folder (`helpers/`). Suite root is also in `~/.network-jobs/suite-root` after `network-jobs setup`.
