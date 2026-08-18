@@ -96,19 +96,54 @@ network_jobs_is_packaged_install() {
   esac
 }
 
+# Print the top-level cache entry directory holding a nested package path.
+network_jobs__cache_entry_root() {
+  local base="$1" nested="$2" rest
+  rest="${nested#"$base"/}"
+  printf '%s/%s\n' "$base" "${rest%%/*}"
+}
+
 # Drop cached npx/pnpm copies so the next github: fetch resolves fresh main.
+# dlx/_npx entry dirs are content hashes, so match on the nested package path.
 network_jobs_purge_package_cache() {
-  local cache
-  for cache in \
-    "$HOME/.local/share/pnpm/store/v11/links/@hirefrank/network-jobs"
-  do
+  local removed=0 cache entry nested
+  local -a entries=()
+
+  for cache in "$HOME"/.local/share/pnpm/store/v*/links/@hirefrank/network-jobs; do
     if [[ -e "$cache" || -L "$cache" ]]; then
       rm -rf "$cache"
       echo "removed $cache"
+      removed=1
     fi
   done
-  if [[ -d "$HOME/.cache/pnpm/dlx" ]]; then
-    find "$HOME/.cache/pnpm/dlx" -maxdepth 2 -iname '*network-jobs*' -exec rm -rf {} + 2>/dev/null || true
-    echo "cleared matching pnpm dlx entries (best-effort)"
+
+  for cache in "$HOME/.cache/pnpm/dlx" "$HOME/.npm/_npx"; do
+    [[ -d "$cache" ]] || continue
+    entries=()
+    while IFS= read -r nested; do
+      entries+=("$(network_jobs__cache_entry_root "$cache" "$nested")")
+    done < <(find "$cache" -maxdepth 6 -type d -path '*node_modules/@hirefrank' 2>/dev/null)
+    ((${#entries[@]})) || continue
+    while IFS= read -r entry; do
+      [[ -d "$entry" ]] || continue
+      rm -rf "$entry"
+      echo "removed cached copy $entry"
+      removed=1
+    done < <(printf '%s\n' "${entries[@]}" | sort -u)
+  done
+
+  ((removed)) || echo "no cached suite copies found"
+}
+
+# Echo a command prefix that can run a package straight from GitHub.
+network_jobs_package_runner() {
+  if command -v pnpm >/dev/null 2>&1 && pnpm --version >/dev/null 2>&1; then
+    echo "pnpm dlx"
+    return 0
   fi
+  if command -v npx >/dev/null 2>&1 && npx --version >/dev/null 2>&1; then
+    echo "npx --yes"
+    return 0
+  fi
+  return 1
 }

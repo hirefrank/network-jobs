@@ -390,12 +390,14 @@ cmd_update() {
   if network_jobs_is_packaged_install "$ROOT"; then
     echo "Updating from GitHub (purging cached suite first)…"
     network_jobs_purge_package_cache
-    if ! command -v npx >/dev/null 2>&1; then
-      echo "error: npx not found — cannot re-fetch the suite" >&2
+    local runner
+    if ! runner="$(network_jobs_package_runner)"; then
+      echo "error: neither pnpm nor npx is usable — cannot re-fetch the suite" >&2
       return 1
     fi
-    # Fresh process so npx resolves a new store path for @main
-    exec npx --yes github:hirefrank/network-jobs#main setup "${setup_args[@]}"
+    # Fresh process so the runner resolves a new store path for #main
+    # shellcheck disable=SC2086
+    exec $runner 'github:hirefrank/network-jobs#main' setup "${setup_args[@]}"
   fi
 
   if [[ -d "$ROOT/.git" ]]; then

@@ -210,14 +210,22 @@ if [[ "$INSTALL_LAUNCHER" -eq 1 ]]; then
     mkdir -p "$launcher_dir"
     cat > "$launcher_dir/network-jobs" <<'LAUNCHER'
 #!/usr/bin/env bash
-# network-jobs launcher — resolves the installed suite, falls back to npx.
+# network-jobs launcher — resolves the installed suite, falls back to a
+# fresh fetch from GitHub if that copy was garbage collected.
 set -euo pipefail
 data="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
 root="$(cat "$data/suite-root" 2>/dev/null || true)"
 if [[ -n "$root" && -x "$root/bin/network-jobs" ]]; then
   exec "$root/bin/network-jobs" "$@"
 fi
-exec npx --yes 'github:hirefrank/network-jobs#main' "$@"
+if command -v pnpm >/dev/null 2>&1 && pnpm --version >/dev/null 2>&1; then
+  exec pnpm dlx 'github:hirefrank/network-jobs#main' "$@"
+fi
+if command -v npx >/dev/null 2>&1 && npx --version >/dev/null 2>&1; then
+  exec npx --yes 'github:hirefrank/network-jobs#main' "$@"
+fi
+echo "network-jobs: suite not found and no pnpm/npx available" >&2
+exit 1
 LAUNCHER
     chmod +x "$launcher_dir/network-jobs"
     hash -r 2>/dev/null || true
