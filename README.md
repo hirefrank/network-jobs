@@ -103,12 +103,19 @@ network-jobs setup | update | doctor | which | agents | routing
 network-jobs import <zip-or-csv>
 network-jobs profile import <resume-file>
 network-jobs profile show
+network-jobs profile clear [--resume] [--yes]
 network-jobs corpus clear [--triage] [--yes]
 network-jobs reset [--data] [--purge-cache] [--yes]
 network-jobs uninstall [--yes]    # alias for reset --data
 ```
 
 Skills self-describe for routing. `network-jobs routing` prints an optional snippet for a project instruction file.
+
+| Wipe | Keeps |
+|------|--------|
+| `corpus clear` | profile, prefs, résumé, LinkedIn graph |
+| `profile clear` | corpus, LinkedIn graph (`--resume` also drops résumé files) |
+| `uninstall` / `reset --data` | nothing under `~/.network-jobs/` |
 
 ## Design notes
 

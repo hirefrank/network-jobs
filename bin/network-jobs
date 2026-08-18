@@ -35,6 +35,9 @@ Commands:
   profile show
       Print profile, preferences, and résumé status
 
+  profile clear [--resume] [--yes]
+      Reset profile + preferences (optional résumé wipe); keeps corpus/graph
+
   corpus clear [--triage] [--yes]
       Empty the searchable corpus (keeps profile + connections); optional triage wipe
 
@@ -151,6 +154,7 @@ usage_profile() {
   cat <<'EOF'
 Usage: network-jobs profile import <resume-file>
        network-jobs profile show
+       network-jobs profile clear [--resume] [--yes]
 
 import  Copy a résumé into ~/.network-jobs/resume/, extract text when possible
         (txt/md, pdf via pdftotext, docx via python). Does not overwrite
@@ -159,12 +163,20 @@ import  Copy a résumé into ~/.network-jobs/resume/, extract text when possible
 
 show    Print profile.json, preferences.json, and résumé file status.
 
+clear   Reset identity prefs: empty profile.json and delete preferences.json.
+        Does **not** touch corpus, connections, or companies.
+        Pass --resume to also delete ~/.network-jobs/resume/.
+
 Options:
+  --resume     Also remove stored résumé files (with clear)
+  --yes, -y    Skip confirmation (clear only)
   --help, -h   Show this help
 
 Examples:
   network-jobs profile import ~/Downloads/Resume.pdf
   network-jobs profile show
+  network-jobs profile clear --yes
+  network-jobs profile clear --resume --yes
 EOF
 }
 
@@ -173,7 +185,7 @@ usage_corpus() {
 Usage: network-jobs corpus clear [--triage] [--yes]
 
 Empty the searchable job corpus under ~/.network-jobs/corpus/ while keeping
-profile, connections, companies, and config.
+profile, connections, companies, config, preferences, and résumé.
 
 Options:
   --triage     Also delete staged careers-* folders under triage/
@@ -634,7 +646,7 @@ cmd_corpus_clear() {
   else
     echo "  (keeping triage/ — pass --triage to wipe staged batches)"
   fi
-  echo "  (keeping profile, connections, companies, config)"
+  echo "  (keeping profile, preferences, resume, connections, companies, config)"
   echo
 
   if [[ "$yes" -ne 1 ]]; then
@@ -762,6 +774,81 @@ cmd_profile_show() {
   fi
 }
 
+cmd_profile_clear() {
+  local wipe_resume=0 yes=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --resume) wipe_resume=1; shift ;;
+      -y|--yes) yes=1; shift ;;
+      -h|--help) usage_profile; return 0 ;;
+      *)
+        echo "Unknown arg: $1" >&2
+        echo "Try: network-jobs profile clear --help" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  echo "This will remove:"
+  echo "  $DATA_HOME/profile.json (reset to empty stub)"
+  echo "  $DATA_HOME/preferences.json"
+  if [[ "$wipe_resume" -eq 1 ]]; then
+    echo "  $DATA_HOME/resume/"
+  else
+    echo "  (keeping resume/ — pass --resume to wipe)"
+  fi
+  echo "  (keeping corpus, connections, companies, config)"
+  echo
+
+  if [[ "$yes" -ne 1 ]]; then
+    if [[ ! -t 0 ]]; then
+      echo "error: non-interactive shell — pass --yes to confirm" >&2
+      return 1
+    fi
+    printf "Continue? [y/N] "
+    local answer
+    read -r answer
+    case "$answer" in
+      y|Y|yes|YES) ;;
+      *) echo "Aborted."; return 1 ;;
+    esac
+  fi
+
+  mkdir -p "$DATA_HOME"
+  cat > "$DATA_HOME/profile.json" <<'EOF'
+{
+  "name": "",
+  "email": "",
+  "title": "",
+  "company": "",
+  "url": ""
+}
+EOF
+  echo "wrote empty $DATA_HOME/profile.json"
+
+  if [[ -e "$DATA_HOME/preferences.json" || -L "$DATA_HOME/preferences.json" ]]; then
+    rm -f "$DATA_HOME/preferences.json"
+    echo "removed $DATA_HOME/preferences.json"
+  fi
+
+  if [[ "$wipe_resume" -eq 1 ]]; then
+    if [[ -d "$DATA_HOME/resume" ]]; then
+      rm -rf "$DATA_HOME/resume"
+      echo "removed $DATA_HOME/resume"
+    fi
+    mkdir -p "$DATA_HOME/resume"
+  fi
+
+  {
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) profile clear resume=$wipe_resume"
+  } >> "$DATA_HOME/logs/setup.log" 2>/dev/null || true
+
+  echo
+  echo "Profile cleared."
+  echo "Next: network-jobs profile import ~/resume.pdf"
+  echo "  then in your agent: \"set up network jobs from my resume\""
+}
+
 cmd_profile() {
   local sub="${1:-}"
   shift || true
@@ -769,6 +856,7 @@ cmd_profile() {
     ""|-h|--help|help) usage_profile ;;
     import) cmd_profile_import "$@" ;;
     show) cmd_profile_show "$@" ;;
+    clear) cmd_profile_clear "$@" ;;
     *)
       echo "Unknown profile command: $sub" >&2
       echo "Try: network-jobs profile --help" >&2
