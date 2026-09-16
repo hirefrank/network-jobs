@@ -34,6 +34,7 @@ cat "$DATA/corpus/manifest.json"
 | `corpus/manifest.json` | Category index + granular file map |
 | `corpus/{category}.json` | Full category list |
 | `corpus/{category}-{loc}-{seniority}.json` | Preferred granular shards |
+| `search/ranked.json` | Top-K from `helpers/rank-jobs.py` — read this, not whole shards |
 | `companies/companies.json` | Connection graph (for “who do I know?”) |
 
 **Location buckets:** `nyc`, `sf`, `remote`, `other`  
@@ -97,10 +98,18 @@ Mention once when defaults applied: e.g. `Using your prefs: remote + NYC, produc
 
 ### Pattern B: "Find me [Role] jobs in [Location]" (PREFERRED)
 
-1. Map role → category, location → bucket, seniority if given
-2. Read granular file(s) from manifest `byLocation`
-3. Sort by `lastSeen` / `postedAt` descending
-4. Output in **strict format** below
+1. Map role → category, location → bucket, seniority if given (prefs are defaults; query wins)
+2. Run the local ranker — do **not** load whole shards into context:
+
+```bash
+DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
+SUITE="$(cat "$DATA/suite-root" 2>/dev/null || true)"
+SUITE="${NETWORK_JOBS_SUITE:-${SUITE:-}}"
+python3 "$SUITE/skills/network-jobs/helpers/rank-jobs.py" --k 25 --query "$USER_QUERY"
+```
+
+3. Read `$DATA/search/ranked.json` only. Use `showing` (`K of N`) as the summary line.
+4. Output in **strict format** below. Never paste a full category/shard dump.
 
 ### Pattern B2: Broad queries
 
@@ -112,11 +121,11 @@ Sort preferred category (or ask) by `firstSeen` desc; show latest ~10.
 
 ### Pattern D: Remote / location-only
 
-Use `{category}-{location}-senior.json` + `-mid.json`.
+Same ranker with `--query` including remote / city. Still prefer granular shards inside the helper.
 
 ### Pattern E: Salary filter
 
-Filter where `salary.min` or `salary.max` meets threshold; skip jobs with no salary.
+Ranker already downranks missing/low salary vs `preferences.salaryMin`. For an explicit floor, pass it in the query (`over 200k`) and skip jobs with no salary when presenting.
 
 ## Output Format
 
@@ -124,7 +133,7 @@ Filter where `salary.min` or `salary.max` meets threshold; skip jobs with no sal
 
 1. Header: `Searching via [Name] ([Title])...` or with `@ [Company]` if set
 2. Data freshness: `Data as of [Mon D], [H:MM AM/PM] ([relative] ago)` from `manifest.lastUpdated`
-3. Summary line: `X [role] roles in [location]:`
+3. Summary line: `Showing K of N` from `search/ranked.json` (then the usual `X [role] roles in [location]:` if useful)
 4. Group by company (COMPANY NAME in caps, then `- N roles`)
 5. Each job: `• [Title] – [Salary if available], [N]d [↗](url)`
 6. Days from `postedAt` else `firstSeen` (`3d`, `14d`, …)
@@ -136,6 +145,7 @@ Filter where `salary.min` or `salary.max` meets threshold; skip jobs with no sal
 Searching via Frank Harris (Executive Coach)...
 Data as of Jul 8, 3:00 PM (2h ago)
 
+Showing 8 of 42
 8 PM roles in NYC:
 
 JUSTWORKS - 5 roles
@@ -151,6 +161,11 @@ Connections at Justworks: …
 - Narrative summaries (“I found 93 roles including…”)
 - Omit `[↗](url)` links
 - Curl remote job hosts for corpus data
+- Dump whole `corpus/*.json` shards into context (use the ranker)
+
+## Helpers
+
+- [`helpers/rank-jobs.py`](helpers/rank-jobs.py) — corpus shards + prefs + résumé keywords → `$DATA/search/ranked.json` (`Showing K of N`)
 
 ## Related Skills
 

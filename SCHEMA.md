@@ -25,13 +25,17 @@ Default: `~/.network-jobs/` (override with `NETWORK_JOBS_HOME`).
 │   └── careers-<slug>-<YYYY-MM-DD>/
 │       ├── INVENTORY.md
 │       ├── index/
-│       │   └── listings.json
+│       │   ├── listings.json
+│       │   ├── matches.json          # prefs-scored shortlist
+│       │   └── summary.json
 │       └── fetch-log/
 │           └── <timestamp>-<label>.json
 ├── corpus/
 │   ├── manifest.json
 │   ├── <category>.json
 │   └── <category>-<loc>-<seniority>.json
+├── search/
+│   └── ranked.json                   # top-K from local ranker
 └── logs/
     └── setup.log
 ```
@@ -177,9 +181,36 @@ Raw extracted openings (pre-normalization):
 
 Omit fields you did not observe. Never invent salary or posted dates.
 
+### index/matches.json
+
+Written by `careers-discover/helpers/match-prefs.py` after extract. Score listings against `preferences.json` (+ résumé keywords when present). **Confirm matches by default** at ingest time; the user can still say “ingest all” (`listings.json`) or a department slice.
+
+```json
+{
+  "nListings": 120,
+  "nMatches": 14,
+  "showing": "14 of 120 match prefs",
+  "departments": { "Product": 40, "Engineering": 80 },
+  "ingestDefault": "matches",
+  "jobs": [
+    {
+      "title": "Staff Product Manager, Growth",
+      "location": "New York, NY or Remote",
+      "url": "https://example.com/jobs/pm-2",
+      "department": "Product",
+      "matchScore": 15,
+      "matchReasons": ["remote", "onsiteLocations", "category", "seniority", "track"],
+      "matched": true
+    }
+  ]
+}
+```
+
 ### INVENTORY.md
 
 Required. Summarize: company, careers URL used, listing count, caveats, suggested next steps.
+
+Helpers append a `<!-- nj-summary -->` block with **N of M match prefs**, a department histogram, and (later) pagination. Do not dump the full board into chat — point at `matches.json`.
 
 ### fetch-log/
 
@@ -273,9 +304,24 @@ Verbatim capture of each fetch/browser snapshot **before** presenting results to
 |-------|-------|--------|
 | `network-jobs-setup` | `resume/`, conversation | `profile.json`, `preferences.json` |
 | `network-jobs-import` | LinkedIn ZIP | `connections/`, `companies/` |
-| `careers-discover` | `companies/`, `preferences.json` (optional focus) | `triage/` |
-| `jobs-ingest` | `triage/` | `corpus/` |
-| `network-jobs` | `corpus/`, `profile.json`, `preferences.json` | — |
+| `careers-discover` | `companies/`, `preferences.json` (optional focus) | `triage/` (`listings.json` + `matches.json`) |
+| `jobs-ingest` | `triage/` (`matches.json` by default, or all / department slice) | `corpus/` |
+| `network-jobs` | `corpus/`, `profile.json`, `preferences.json`, `resume/` | `search/ranked.json` |
 | `intro-email-generator` | `profile.json`, `resume/text.md`, job context | — (draft in chat) |
 
 CLI helpers: `network-jobs profile import <file>` stores the résumé; `network-jobs profile show` prints profile + prefs + resume status.
+
+Search ranker: `skills/network-jobs/helpers/rank-jobs.py` writes `search/ranked.json` (`showing: "K of N"`). The search skill reads that file — it does not dump whole shards into context.
+
+### search/ranked.json
+
+```json
+{
+  "k": 25,
+  "n": 430,
+  "showing": "25 of 430",
+  "query": "senior pm nyc",
+  "shards": ["product-nyc-senior.json"],
+  "jobs": []
+}
+```

@@ -7,17 +7,17 @@ Real examples of queries and expected responses.
 **User:** "Find me PM jobs in NYC"
 
 **Process:**
-1. Read profile.json and corpus/manifest.json from ~/.network-jobs
-2. Map "PM" → `product`, "NYC" → `nyc`
-3. Check manifest: `categories.product.byLocation.nyc` has senior (71) + mid (59) = 130 jobs
-4. Extract granular files:
-   - `product-nyc-senior.json`
-   - `product-nyc-mid.json`
-5. Sort by `postedAt` descending, group by company
+1. Read profile.json, preferences.json, and corpus/manifest.json from ~/.network-jobs
+2. Run `helpers/rank-jobs.py --k 25 --query "PM jobs in NYC"` (prefs fill location/seniority/category defaults)
+3. Read `search/ranked.json` only — do not dump `product-nyc-senior.json`
+4. Group the top-K by company
 
 **Response:**
 ```
 Searching via Frank Harris (Executive Coach)...
+Data as of Jul 8, 3:00 PM (2h ago)
+
+Showing 23 of 130
 23 PM roles in NYC:
 
 STRIPE - 8 roles

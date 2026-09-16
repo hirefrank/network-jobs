@@ -20,6 +20,9 @@
   "engines": {
     "node": ">=18"
   },
+  "scripts": {
+    "test": "python3 tests/test_pipeline.py"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/hirefrank/network-jobs.git"

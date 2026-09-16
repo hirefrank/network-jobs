@@ -1,0 +1,20 @@
+{
+  "updatedAt": "2026-09-16T00:00:00Z",
+  "interviewComplete": true,
+  "workModes": ["remote", "hybrid"],
+  "locationBuckets": ["nyc", "remote"],
+  "locations": ["New York", "Remote US"],
+  "onsiteLocations": ["New York"],
+  "categories": ["product"],
+  "seniority": ["senior"],
+  "track": ["ic"],
+  "companyStages": ["seed", "series-b", "public"],
+  "companySizes": [],
+  "industries": ["developer-tools", "fintech"],
+  "formerEmployers": ["Acme Corp"],
+  "formerEmployerPolicy": "exclude",
+  "salaryMin": null,
+  "mustHaves": ["0-to-1"],
+  "dealBreakers": ["crypto trading"],
+  "notes": "Open to NYC hybrid, not internships"
+}

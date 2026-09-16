@@ -62,24 +62,40 @@ Read [SCHEMA.md](../../SCHEMA.md) first. Pattern inspired by Provenance `source-
 $DATA/triage/careers-<slug>-<YYYY-MM-DD>/
 ├── INVENTORY.md
 ├── index/listings.json
+├── index/matches.json
 └── fetch-log/<timestamp>-<label>.json
 ```
 
 Use [`helpers/stage-company.sh`](helpers/stage-company.sh) to mkdir + write skeleton files, then fill listings.
 
-6. **INVENTORY.md must include**
+6. **Shortlist against prefs (required helper)**
+
+After `index/listings.json` is written, run — do **not** score the board in the model:
+
+```bash
+DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
+SUITE="$(cat "$DATA/suite-root" 2>/dev/null || true)"
+SUITE="${NETWORK_JOBS_SUITE:-${SUITE:-}}"
+python3 "$SUITE/skills/careers-discover/helpers/match-prefs.py" \
+  --triage-dir "$TRIAGE" --company "$NAME"
+```
+
+This writes `index/matches.json` and patches INVENTORY with **N of M match prefs** plus a department histogram. Quiet JSON on stdout (`-v` for departments).
+
+7. **INVENTORY.md must include**
    - Company name + slug
    - Careers URL(s) used
-   - Listing count
+   - Listing count **and** “N of M match prefs”
+   - Department histogram (from the helper)
    - Connections at company (from graph) + sample people
    - Caveats (bot wall, partial pagination, uncertain domain)
-   - Next steps (“ready for jobs-ingest?” / “need recipe”)
+   - Next steps (“ingest matches?” / “ingest all” / department slice)
 
-7. **Hand off (hard stop)**
-   - Point at each triage dir and summarize counts / caveats from `INVENTORY.md`
-   - Ask whether to run `jobs-ingest` on this batch
+8. **Hand off (hard stop)**
+   - Point at each triage dir. Quote the helper’s `showing` line (e.g. `14 of 120 match prefs`) — do not paste the full listings array.
+   - Ask whether to run `jobs-ingest` on **matches** (default), **all** listings, or a department slice.
    - **STOP.** Do **not** invoke `jobs-ingest`, rebuild the corpus, or resume a job search in the same turn.
-   - Only after the user explicitly confirms (e.g. “ingest these”, “promote the Google batch”) should you load **jobs-ingest**.
+   - Only after the user explicitly confirms (e.g. “ingest these”, “ingest matches”, “ingest all”, “promote the Google batch”) should you load **jobs-ingest**.
 
 ## Bot / fetch tiers
 
@@ -123,6 +139,7 @@ Never start with agent-browser for a simple static page. Never keep retrying bro
 
 - [`helpers/stage-company.sh`](helpers/stage-company.sh) — create triage dir skeleton
 - [`helpers/fetch-page.sh`](helpers/fetch-page.sh) — curl page to fetch-log + stdout path
+- [`helpers/match-prefs.py`](helpers/match-prefs.py) — score listings vs `preferences.json` → `index/matches.json`
 
 ## Related
 

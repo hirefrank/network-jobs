@@ -1,0 +1,58 @@
+[
+  {
+    "title": "Senior Product Manager, Foundations",
+    "location": "New York, NY",
+    "url": "https://example.com/jobs/pm-1",
+    "department": "Product",
+    "sourceUrl": "https://example.com/careers"
+  },
+  {
+    "title": "Staff Product Manager, Growth",
+    "location": "New York, NY or Remote",
+    "url": "https://example.com/jobs/pm-2",
+    "department": "Product",
+    "sourceUrl": "https://example.com/careers"
+  },
+  {
+    "title": "Product Manager Intern",
+    "location": "New York, NY",
+    "url": "https://example.com/jobs/pm-intern",
+    "department": "Product",
+    "sourceUrl": "https://example.com/careers"
+  },
+  {
+    "title": "Senior Backend Engineer",
+    "location": "San Francisco, CA",
+    "url": "https://example.com/jobs/eng-1",
+    "department": "Infrastructure",
+    "sourceUrl": "https://example.com/careers"
+  },
+  {
+    "title": "Director of Product",
+    "location": "Remote US",
+    "url": "https://example.com/jobs/pm-dir",
+    "department": "Product",
+    "sourceUrl": "https://example.com/careers"
+  },
+  {
+    "title": "Account Executive",
+    "location": "New York, NY",
+    "url": "https://example.com/jobs/sales-1",
+    "department": "Sales",
+    "sourceUrl": "https://example.com/careers"
+  },
+  {
+    "title": "Senior Product Manager, Crypto Trading",
+    "location": "Remote",
+    "url": "https://example.com/jobs/pm-crypto",
+    "department": "Product",
+    "sourceUrl": "https://example.com/careers"
+  },
+  {
+    "title": "Senior Product Manager",
+    "location": "London, UK",
+    "url": "https://example.com/jobs/pm-lon",
+    "department": "Product",
+    "sourceUrl": "https://example.com/careers"
+  }
+]
