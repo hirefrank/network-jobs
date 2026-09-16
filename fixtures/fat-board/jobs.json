@@ -1,0 +1,331 @@
+{
+  "jobs": [
+    {
+      "id": 1,
+      "title": "Senior Product Manager",
+      "department": "Product",
+      "location": "New York, NY",
+      "url": "https://fatboard.example/jobs/1",
+      "absolute_url": "https://fatboard.example/jobs/1"
+    },
+    {
+      "id": 2,
+      "title": "Staff Software Engineer",
+      "department": "Engineering",
+      "location": "San Francisco, CA",
+      "url": "https://fatboard.example/jobs/2",
+      "absolute_url": "https://fatboard.example/jobs/2"
+    },
+    {
+      "id": 3,
+      "title": "Product Designer",
+      "department": "Design",
+      "location": "Remote",
+      "url": "https://fatboard.example/jobs/3",
+      "absolute_url": "https://fatboard.example/jobs/3"
+    },
+    {
+      "id": 4,
+      "title": "Account Executive",
+      "department": "Sales",
+      "location": "New York, NY or Remote",
+      "url": "https://fatboard.example/jobs/4",
+      "absolute_url": "https://fatboard.example/jobs/4",
+      "locations": [
+        "New York, NY",
+        "Remote"
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Engineering Manager",
+      "department": "Engineering",
+      "location": "London, UK",
+      "url": "https://fatboard.example/jobs/5",
+      "absolute_url": "https://fatboard.example/jobs/5"
+    },
+    {
+      "id": 6,
+      "title": "Data Analyst",
+      "department": "Engineering",
+      "location": "Austin, TX",
+      "url": "https://fatboard.example/jobs/6",
+      "absolute_url": "https://fatboard.example/jobs/6"
+    },
+    {
+      "id": 7,
+      "title": "Product Manager Intern",
+      "department": "Product",
+      "location": "New York, NY",
+      "url": "https://fatboard.example/jobs/7",
+      "absolute_url": "https://fatboard.example/jobs/7"
+    },
+    {
+      "id": 8,
+      "title": "Principal Engineer",
+      "department": "Engineering",
+      "location": "San Francisco, CA",
+      "url": "https://fatboard.example/jobs/8",
+      "absolute_url": "https://fatboard.example/jobs/8"
+    },
+    {
+      "id": 9,
+      "title": "Recruiter",
+      "department": "People",
+      "location": "Remote",
+      "url": "https://fatboard.example/jobs/9",
+      "absolute_url": "https://fatboard.example/jobs/9"
+    },
+    {
+      "id": 10,
+      "title": "Director of Product",
+      "department": "Product",
+      "location": "New York, NY or Remote",
+      "url": "https://fatboard.example/jobs/10",
+      "absolute_url": "https://fatboard.example/jobs/10",
+      "locations": [
+        "New York, NY",
+        "Remote"
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Senior Product Manager 11",
+      "department": "Product",
+      "location": "London, UK",
+      "url": "https://fatboard.example/jobs/11",
+      "absolute_url": "https://fatboard.example/jobs/11"
+    },
+    {
+      "id": 12,
+      "title": "Staff Software Engineer 12",
+      "department": "Engineering",
+      "location": "Austin, TX",
+      "url": "https://fatboard.example/jobs/12",
+      "absolute_url": "https://fatboard.example/jobs/12"
+    },
+    {
+      "id": 13,
+      "title": "Product Designer 13",
+      "department": "Design",
+      "location": "New York, NY",
+      "url": "https://fatboard.example/jobs/13",
+      "absolute_url": "https://fatboard.example/jobs/13"
+    },
+    {
+      "id": 14,
+      "title": "Account Executive 14",
+      "department": "Sales",
+      "location": "San Francisco, CA",
+      "url": "https://fatboard.example/jobs/14",
+      "absolute_url": "https://fatboard.example/jobs/14"
+    },
+    {
+      "id": 15,
+      "title": "Engineering Manager 15",
+      "department": "Engineering",
+      "location": "Remote",
+      "url": "https://fatboard.example/jobs/15",
+      "absolute_url": "https://fatboard.example/jobs/15"
+    },
+    {
+      "id": 16,
+      "title": "Data Analyst 16",
+      "department": "Engineering",
+      "location": "New York, NY or Remote",
+      "url": "https://fatboard.example/jobs/16",
+      "absolute_url": "https://fatboard.example/jobs/16",
+      "locations": [
+        "New York, NY",
+        "Remote"
+      ]
+    },
+    {
+      "id": 17,
+      "title": "Product Manager Intern 17",
+      "department": "Product",
+      "location": "London, UK",
+      "url": "https://fatboard.example/jobs/17",
+      "absolute_url": "https://fatboard.example/jobs/17"
+    },
+    {
+      "id": 18,
+      "title": "Principal Engineer 18",
+      "department": "Engineering",
+      "location": "Austin, TX",
+      "url": "https://fatboard.example/jobs/18",
+      "absolute_url": "https://fatboard.example/jobs/18"
+    },
+    {
+      "id": 19,
+      "title": "Recruiter 19",
+      "department": "People",
+      "location": "New York, NY",
+      "url": "https://fatboard.example/jobs/19",
+      "absolute_url": "https://fatboard.example/jobs/19"
+    },
+    {
+      "id": 20,
+      "title": "Director of Product 20",
+      "department": "Product",
+      "location": "San Francisco, CA",
+      "url": "https://fatboard.example/jobs/20",
+      "absolute_url": "https://fatboard.example/jobs/20"
+    },
+    {
+      "id": 21,
+      "title": "Senior Product Manager 21",
+      "department": "Product",
+      "location": "Remote",
+      "url": "https://fatboard.example/jobs/21",
+      "absolute_url": "https://fatboard.example/jobs/21"
+    },
+    {
+      "id": 22,
+      "title": "Staff Software Engineer 22",
+      "department": "Engineering",
+      "location": "New York, NY or Remote",
+      "url": "https://fatboard.example/jobs/22",
+      "absolute_url": "https://fatboard.example/jobs/22",
+      "locations": [
+        "New York, NY",
+        "Remote"
+      ]
+    },
+    {
+      "id": 23,
+      "title": "Product Designer 23",
+      "department": "Design",
+      "location": "London, UK",
+      "url": "https://fatboard.example/jobs/23",
+      "absolute_url": "https://fatboard.example/jobs/23"
+    },
+    {
+      "id": 24,
+      "title": "Account Executive 24",
+      "department": "Sales",
+      "location": "Austin, TX",
+      "url": "https://fatboard.example/jobs/24",
+      "absolute_url": "https://fatboard.example/jobs/24"
+    },
+    {
+      "id": 25,
+      "title": "Engineering Manager 25",
+      "department": "Engineering",
+      "location": "New York, NY",
+      "url": "https://fatboard.example/jobs/25",
+      "absolute_url": "https://fatboard.example/jobs/25"
+    },
+    {
+      "id": 26,
+      "title": "Data Analyst 26",
+      "department": "Engineering",
+      "location": "San Francisco, CA",
+      "url": "https://fatboard.example/jobs/26",
+      "absolute_url": "https://fatboard.example/jobs/26"
+    },
+    {
+      "id": 27,
+      "title": "Product Manager Intern 27",
+      "department": "Product",
+      "location": "Remote",
+      "url": "https://fatboard.example/jobs/27",
+      "absolute_url": "https://fatboard.example/jobs/27"
+    },
+    {
+      "id": 28,
+      "title": "Principal Engineer 28",
+      "department": "Engineering",
+      "location": "New York, NY or Remote",
+      "url": "https://fatboard.example/jobs/28",
+      "absolute_url": "https://fatboard.example/jobs/28",
+      "locations": [
+        "New York, NY",
+        "Remote"
+      ]
+    },
+    {
+      "id": 29,
+      "title": "Recruiter 29",
+      "department": "People",
+      "location": "London, UK",
+      "url": "https://fatboard.example/jobs/29",
+      "absolute_url": "https://fatboard.example/jobs/29"
+    },
+    {
+      "id": 30,
+      "title": "Director of Product 30",
+      "department": "Product",
+      "location": "Austin, TX",
+      "url": "https://fatboard.example/jobs/30",
+      "absolute_url": "https://fatboard.example/jobs/30"
+    },
+    {
+      "id": 31,
+      "title": "Senior Product Manager 31",
+      "department": "Product",
+      "location": "New York, NY",
+      "url": "https://fatboard.example/jobs/31",
+      "absolute_url": "https://fatboard.example/jobs/31"
+    },
+    {
+      "id": 32,
+      "title": "Staff Software Engineer 32",
+      "department": "Engineering",
+      "location": "San Francisco, CA",
+      "url": "https://fatboard.example/jobs/32",
+      "absolute_url": "https://fatboard.example/jobs/32"
+    },
+    {
+      "id": 33,
+      "title": "Product Designer 33",
+      "department": "Design",
+      "location": "Remote",
+      "url": "https://fatboard.example/jobs/33",
+      "absolute_url": "https://fatboard.example/jobs/33"
+    },
+    {
+      "id": 34,
+      "title": "Account Executive 34",
+      "department": "Sales",
+      "location": "New York, NY or Remote",
+      "url": "https://fatboard.example/jobs/34",
+      "absolute_url": "https://fatboard.example/jobs/34",
+      "locations": [
+        "New York, NY",
+        "Remote"
+      ]
+    },
+    {
+      "id": 35,
+      "title": "Engineering Manager 35",
+      "department": "Engineering",
+      "location": "London, UK",
+      "url": "https://fatboard.example/jobs/35",
+      "absolute_url": "https://fatboard.example/jobs/35"
+    },
+    {
+      "id": 36,
+      "title": "Data Analyst 36",
+      "department": "Engineering",
+      "location": "Austin, TX",
+      "url": "https://fatboard.example/jobs/36",
+      "absolute_url": "https://fatboard.example/jobs/36"
+    },
+    {
+      "id": 1,
+      "title": "Senior Product Manager",
+      "department": "Product",
+      "location": "New York, NY",
+      "url": "https://fatboard.example/jobs/1?gh_src=dup",
+      "absolute_url": "https://fatboard.example/jobs/1?gh_src=dup"
+    },
+    {
+      "title": "Senior Product Manager",
+      "department": "Product",
+      "location": "New York, NY",
+      "url": "https://careers.fatboard.example/spm"
+    }
+  ],
+  "total": 38
+}

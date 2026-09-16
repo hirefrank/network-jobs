@@ -27,6 +27,7 @@ Default: `~/.network-jobs/` (override with `NETWORK_JOBS_HOME`).
 │       ├── index/
 │       │   ├── listings.json
 │       │   ├── matches.json          # prefs-scored shortlist
+│       │   ├── pagination.json       # pages / complete / truncated
 │       │   └── summary.json
 │       └── fetch-log/
 │           └── <timestamp>-<label>.json
@@ -169,8 +170,10 @@ Raw extracted openings (pre-normalization):
   {
     "title": "Senior Backend Engineer",
     "location": "San Francisco, CA",
+    "locations": ["San Francisco, CA"],
     "url": "https://example.com/jobs/123",
     "department": "Infrastructure",
+    "externalId": "123",
     "salary": { "min": 180000, "max": 250000 },
     "postedAt": "2025-12-15T00:00:00Z",
     "sourceUrl": "https://example.com/careers",
@@ -179,7 +182,23 @@ Raw extracted openings (pre-normalization):
 ]
 ```
 
-Omit fields you did not observe. Never invent salary or posted dates.
+`locations` is optional (one posting, many offices). `externalId` is the ATS/board id when the JSON exposes one — used for fingerprinting, never invented.
+
+### index/pagination.json
+
+Written by `careers-discover/helpers/paginate-listings.py` when a jobs JSON/API is followed (page / cursor / offset). Cap `maxPages` (default 15). ATS-agnostic — no adapter matrix.
+
+```json
+{
+  "pages": 4,
+  "complete": true,
+  "truncated": false,
+  "scheme": "link",
+  "maxPages": 15
+}
+```
+
+Also copied into the INVENTORY `Pagination:` line. **`complete` is false** when the cap truncated the crawl or a next-page signal remained. Ingest must **not** expire unseen jobs unless `complete` is true.
 
 ### index/matches.json
 
@@ -234,21 +253,31 @@ Verbatim capture of each fetch/browser snapshot **before** presenting results to
 ```json
 {
   "id": "stripe-senior-backend-engineer-123",
+  "fingerprint": "id:stripe:123",
   "title": "Senior Backend Engineer",
   "company": "Stripe",
   "companyDomain": "stripe.com",
   "department": "Developer Infrastructure",
   "category": "engineering",
   "location": "San Francisco, CA",
+  "locations": [{"raw": "San Francisco, CA", "city": "San Francisco", "region": "CA", "remote": false, "bucket": "sf"}],
   "locationBucket": "sf",
+  "locationBuckets": ["sf"],
   "seniority": "senior",
+  "track": "ic",
   "url": "https://stripe.com/jobs/123",
+  "externalId": "123",
+  "status": "open",
   "salary": { "min": 180000, "max": 250000 },
   "postedAt": "2025-12-15T00:00:00Z",
   "firstSeen": "2026-07-08",
   "lastSeen": "2026-07-08"
 }
 ```
+
+Identity is **`fingerprint`**, not URL: `id:{company}:{atsId}` when `externalId` is known, otherwise `fp:{company}:{sha1(title+locations)}`. Rebuild merges on fingerprint (incoming wins, `firstSeen` preserved). `status` is `open` | `closed`. Closed jobs stay in `jobs-all.json` but are omitted from searchable shards.
+
+**Expiry / close:** when ingesting a company, unseen open jobs for that company are marked `closed` **only if** triage `pagination.complete` is true. Incomplete crawls (truncated, cap hit, missing next page) must not expire anything.
 
 ### Categories (15)
 

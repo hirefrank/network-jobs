@@ -191,4 +191,4 @@ Everything is local, so there are no rate limits — but context is finite:
 
 - Read `manifest.json` once per conversation
 - Prefer granular shards over full category files
-- Never read `jobs-all.json` for a search; it is the rebuild source
+- **Read efficiency:** Prefer `search/ranked.json` after the ranker. `jobs-all.json` is the rebuild source; closed jobs live there only.

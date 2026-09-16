@@ -1,173 +1,45 @@
 #!/usr/bin/env bash
-# Rebuild corpus shards + manifest from a flat jobs-all.json array.
-# Merges with existing corpus/jobs-all.json (input wins on same URL).
+# Rebuild corpus shards + manifest from a flat jobs JSON array.
+# Merges with existing corpus/jobs-all.json by fingerprint (not URL).
+# Expire/close unseen jobs for a company ONLY with --pagination-complete.
 set -euo pipefail
 
 ALL_JSON="${1:-}"
 if [[ -z "$ALL_JSON" || ! -f "$ALL_JSON" ]]; then
-  echo "Usage: rebuild-corpus.sh <jobs-all.json>" >&2
-  echo "  Merges into existing corpus (by URL); input jobs win on conflict." >&2
+  echo "Usage: rebuild-corpus.sh <jobs-batch.json> [--expire-company SLUG] [--pagination-complete]" >&2
+  echo "  Merges into existing corpus by fingerprint; input jobs win on conflict." >&2
+  echo "  Unseen jobs are closed only when --pagination-complete is set." >&2
   exit 1
 fi
+shift || true
 
-DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
-CORPUS="$DATA/corpus"
-mkdir -p "$CORPUS"
+EXPIRE_COMPANY=""
+COMPLETE=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --expire-company) EXPIRE_COMPANY="$2"; shift 2 ;;
+    --pagination-complete) COMPLETE=1; shift ;;
+    --pagination-incomplete) COMPLETE=0; shift ;;
+    *)
+      echo "Unknown arg: $1" >&2
+      exit 1
+      ;;
+  esac
+done
 
-export ALL_JSON CORPUS
-python3 <<'PY'
-import json, os, re
-from collections import defaultdict
-from datetime import datetime, timezone
-from pathlib import Path
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+export PYTHONPATH="${ROOT}/lib${PYTHONPATH:+:$PYTHONPATH}"
+export NETWORK_JOBS_SUITE="${NETWORK_JOBS_SUITE:-$ROOT}"
 
-all_path = Path(os.environ["ALL_JSON"])
-corpus = Path(os.environ["CORPUS"])
-existing_path = corpus / "jobs-all.json"
+args=(-v rebuild "$ALL_JSON")
+if [[ -n "$EXPIRE_COMPANY" ]]; then
+  args+=(--expire-company "$EXPIRE_COMPANY")
+fi
+if [[ "$COMPLETE" -eq 1 ]]; then
+  args+=(--pagination-complete)
+else
+  args+=(--pagination-incomplete)
+fi
 
-def load_jobs(path: Path):
-    if not path.exists():
-        return []
-    data = json.loads(path.read_text())
-    if not isinstance(data, list):
-        raise SystemExit(f"{path} must be a JSON array")
-    return data
-
-def load_existing_jobs() -> list:
-    """Prefer non-empty jobs-all.json; otherwise reconstruct from shard files."""
-    if existing_path.exists():
-        existing = load_jobs(existing_path)
-        if existing:
-            return existing
-
-    by_url = {}
-    manifest_path = corpus / "manifest.json"
-    shard_names = set()
-    if manifest_path.exists():
-        try:
-            manifest = json.loads(manifest_path.read_text())
-            for cat, meta in (manifest.get("categories") or {}).items():
-                if isinstance(meta, dict) and meta.get("file"):
-                    shard_names.add(meta["file"])
-                for loc_meta in (meta.get("byLocation") or {}).values():
-                    if not isinstance(loc_meta, dict):
-                        continue
-                    for sen_meta in loc_meta.values():
-                        if isinstance(sen_meta, dict) and sen_meta.get("file"):
-                            shard_names.add(sen_meta["file"])
-        except json.JSONDecodeError:
-            pass
-
-    for path in corpus.glob("*.json"):
-        if path.name in {"manifest.json", "jobs-all.json"}:
-            continue
-        shard_names.add(path.name)
-
-    for name in sorted(shard_names):
-        path = corpus / name
-        if not path.exists():
-            continue
-        for j in load_jobs(path):
-            url = (j.get("url") or "").strip()
-            if url:
-                by_url[url] = j
-    return list(by_url.values())
-
-incoming = load_jobs(all_path)
-# Merge: existing first, then incoming (incoming overwrites same URL)
-by_url = {}
-for j in load_existing_jobs():
-    url = (j.get("url") or "").strip()
-    if url:
-        by_url[url] = j
-for j in incoming:
-    url = (j.get("url") or "").strip()
-    if not url:
-        continue
-    prev = by_url.get(url)
-    if prev and not j.get("firstSeen"):
-        j = {**j, "firstSeen": prev.get("firstSeen") or j.get("firstSeen")}
-    by_url[url] = j
-
-jobs = list(by_url.values())
-
-categories = defaultdict(list)
-granular = defaultdict(list)
-
-for j in jobs:
-    cat = j.get("category") or "other"
-    loc = j.get("locationBucket") or "other"
-    sen = j.get("seniority") or "mid"
-    categories[cat].append(j)
-    granular[(cat, loc, sen)].append(j)
-
-written = set()
-
-for cat, items in categories.items():
-    name = f"{cat}.json"
-    (corpus / name).write_text(json.dumps(items, indent=2, ensure_ascii=False) + "\n")
-    written.add(name)
-
-for (cat, loc, sen), items in granular.items():
-    name = f"{cat}-{loc}-{sen}.json"
-    (corpus / name).write_text(json.dumps(items, indent=2, ensure_ascii=False) + "\n")
-    written.add(name)
-
-(corpus / "jobs-all.json").write_text(
-    json.dumps(jobs, indent=2, ensure_ascii=False) + "\n"
-)
-written.add("jobs-all.json")
-
-now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-manifest = {
-    "lastUpdated": now,
-    "totalJobs": len(jobs),
-    "categories": {},
-}
-
-for cat, items in sorted(categories.items()):
-    by_loc = defaultdict(lambda: {"senior": [], "mid": []})
-    for j in items:
-        loc = j.get("locationBucket") or "other"
-        sen = j.get("seniority") or "mid"
-        if sen not in ("senior", "mid"):
-            sen = "mid"
-        by_loc[loc][sen].append(j)
-
-    entry = {
-        "count": len(items),
-        "file": f"{cat}.json",
-        "byLocation": {},
-    }
-    for loc, sens in sorted(by_loc.items()):
-        entry["byLocation"][loc] = {}
-        for sen, arr in sens.items():
-            if not arr:
-                continue
-            fname = f"{cat}-{loc}-{sen}.json"
-            entry["byLocation"][loc][sen] = {"count": len(arr), "file": fname}
-    manifest["categories"][cat] = entry
-
-(corpus / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-written.add("manifest.json")
-
-# Remove stale shard JSON files no longer referenced
-keep = written | {"manifest.json", "jobs-all.json"}
-removed = []
-for path in corpus.glob("*.json"):
-    if path.name in keep:
-        continue
-    # Only remove category / granular shard patterns
-    if path.name == "manifest.json" or path.name == "jobs-all.json":
-        continue
-    path.unlink()
-    removed.append(path.name)
-
-print(json.dumps({
-    "totalJobs": len(jobs),
-    "incoming": len(incoming),
-    "files": sorted(written),
-    "removedStale": removed,
-    "lastUpdated": now,
-}, indent=2))
-PY
+python3 -m network_jobs.cli "${args[@]}"

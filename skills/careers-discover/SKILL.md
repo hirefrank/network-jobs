@@ -29,6 +29,12 @@ Read [SCHEMA.md](../../SCHEMA.md) first. Pattern inspired by Provenance `source-
 
 ## Workflow
 
+```bash
+DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
+SUITE="$(cat "$DATA/suite-root" 2>/dev/null || true)"
+SUITE="${NETWORK_JOBS_SUITE:-${SUITE:-}}"
+```
+
 1. **Pick companies**
    - Read `$DATA/companies/companies.json`
    - Prefer high `connectionCount`, or filter by user query
@@ -52,9 +58,17 @@ Read [SCHEMA.md](../../SCHEMA.md) first. Pattern inspired by Provenance `source-
 
 4. **Extract listings**
    - Prefer structured JSON if the page or network tab exposes a jobs API
-   - Else parse visible listing cards / table rows
-   - For each role capture: `title`, `url` (required), `location`, `department`, `salary` (only if shown), `postedAt` (only if shown), `sourceUrl`
-   - Follow pagination / “Load more” when practical; note caps in INVENTORY
+   - When a jobs JSON/API URL is known, **paginate in the helper** (not in the model context):
+
+```bash
+python3 "$SUITE/skills/careers-discover/helpers/paginate-listings.py" \
+  --url "$JOBS_JSON_URL" --triage-dir "$TRIAGE" --company "$NAME" --max-pages 15
+```
+
+     Follows `page` / `cursor` / `offset` / `links.next` generically. Writes `index/listings.json`, `index/pagination.json` (`pages`, `complete`, `truncated`), and one fetch-log metadata file **per page**. Cap `maxPages`.
+   - Else parse visible listing cards / table rows (still write fetch-log before summarizing)
+   - For each role capture: `title`, `url` (required), `location` and `locations[]` when shown, `department`, `externalId` if the JSON has an id, `salary` / `postedAt` only if shown, `sourceUrl`
+   - Never invent ATS-specific parsers. If the helper truncates, set `complete: false` and say so in INVENTORY.
 
 5. **Stage**
 
@@ -139,6 +153,7 @@ Never start with agent-browser for a simple static page. Never keep retrying bro
 
 - [`helpers/stage-company.sh`](helpers/stage-company.sh) — create triage dir skeleton
 - [`helpers/fetch-page.sh`](helpers/fetch-page.sh) — curl page to fetch-log + stdout path
+- [`helpers/paginate-listings.py`](helpers/paginate-listings.py) — page/cursor/offset into `listings.json` + `pagination.json`
 - [`helpers/match-prefs.py`](helpers/match-prefs.py) — score listings vs `preferences.json` → `index/matches.json`
 
 ## Related

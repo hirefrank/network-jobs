@@ -130,7 +130,7 @@ Skills self-describe for routing. `network-jobs routing` prints an optional snip
 export NETWORK_JOBS_HOME=/tmp/nj-test
 npx --yes 'github:hirefrank/network-jobs#main' setup --agent auto --no-browser
 npx --yes 'github:hirefrank/network-jobs#main' import ./fixtures/Connections.csv
-python3 tests/test_pipeline.py
+python3 tests/test_pipeline.py   # prefs shortlist, ranker, fat-board pagination, fingerprint expiry
 ```
 
 ## Decommissioning the old Workers app

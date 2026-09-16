@@ -182,5 +182,199 @@ class RankerTests(unittest.TestCase):
         self.assertLessEqual(len(ranked["jobs"]), 2)
 
 
+class PaginationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        from threading import Thread
+        from urllib.parse import parse_qs, urlparse
+
+        board = json.loads((FIXTURES / "fat-board" / "jobs.json").read_text())
+        cls.jobs = board["jobs"]
+
+        class Handler(BaseHTTPRequestHandler):
+            jobs = cls.jobs
+
+            def log_message(self, fmt, *args):
+                return
+
+            def _send(self, payload):
+                body = json.dumps(payload).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_GET(self):
+                parsed = urlparse(self.path)
+                q = parse_qs(parsed.query)
+                limit = int((q.get("limit") or ["10"])[0])
+                if parsed.path.endswith("/offset"):
+                    offset = int((q.get("offset") or ["0"])[0])
+                    chunk = self.jobs[offset:offset + limit]
+                    self._send({"jobs": chunk, "total": len(self.jobs)})
+                    return
+                if parsed.path.endswith("/cursor"):
+                    cursor = int((q.get("cursor") or ["0"])[0])
+                    chunk = self.jobs[cursor:cursor + limit]
+                    nxt = cursor + limit if cursor + limit < len(self.jobs) else None
+                    self._send({"results": chunk, "nextCursor": nxt})
+                    return
+                page = int((q.get("page") or ["1"])[0])
+                start = (page - 1) * limit
+                chunk = self.jobs[start:start + limit]
+                payload = {"jobs": chunk, "total": len(self.jobs)}
+                if start + limit < len(self.jobs):
+                    payload["next"] = f"/jobs?page={page + 1}&limit={limit}"
+                self._send(payload)
+
+        cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        cls.port = cls.httpd.server_address[1]
+        cls.thread = Thread(target=cls.httpd.serve_forever, daemon=True)
+        cls.thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.httpd.shutdown()
+        cls.httpd.server_close()
+
+    def _triage(self):
+        tmp = Path(tempfile.mkdtemp(prefix="nj-page-"))
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        triage = tmp / "triage"
+        triage.mkdir()
+        return triage
+
+    def test_page_link_into_listings(self):
+        from network_jobs.pagination import paginate, write_pagination
+
+        triage = self._triage()
+        url = f"http://127.0.0.1:{self.port}/jobs?page=1&limit=10"
+        result = paginate(url, max_pages=10, page_size=10)
+        self.assertGreaterEqual(result["pagination"]["pages"], 4)
+        self.assertTrue(result["pagination"]["complete"])
+        self.assertFalse(result["pagination"]["truncated"])
+        self.assertEqual(len(result["listings"]), 38)
+        quiet = write_pagination(triage, result, company="FatBoard")
+        self.assertTrue((triage / "index" / "pagination.json").is_file())
+        inv = (triage / "INVENTORY.md").read_text()
+        self.assertIn("complete=true", inv)
+        self.assertEqual(quiet["pages"], result["pagination"]["pages"])
+
+    def test_max_pages_marks_incomplete(self):
+        from network_jobs.pagination import paginate
+
+        url = f"http://127.0.0.1:{self.port}/jobs?page=1&limit=10"
+        result = paginate(url, max_pages=2, page_size=10)
+        self.assertEqual(result["pagination"]["pages"], 2)
+        self.assertFalse(result["pagination"]["complete"])
+        self.assertTrue(result["pagination"]["truncated"])
+
+    def test_offset_and_cursor_schemes(self):
+        from network_jobs.pagination import paginate
+
+        off = paginate(f"http://127.0.0.1:{self.port}/offset?offset=0&limit=10", max_pages=10, page_size=10)
+        self.assertEqual(len(off["listings"]), 38)
+        self.assertIn(off["pagination"]["scheme"], {"offset", "link"})
+        self.assertTrue(off["pagination"]["complete"])
+        cur = paginate(f"http://127.0.0.1:{self.port}/cursor?cursor=0&limit=10", max_pages=10, page_size=10)
+        self.assertEqual(len(cur["listings"]), 38)
+        self.assertEqual(cur["pagination"]["scheme"], "cursor")
+        self.assertTrue(cur["pagination"]["complete"])
+
+    def test_locations_array_preserved(self):
+        from network_jobs.pagination import paginate
+
+        url = f"http://127.0.0.1:{self.port}/jobs?page=1&limit=10"
+        result = paginate(url, max_pages=10, page_size=10)
+        hybrid = [j for j in result["listings"] if j.get("locations")]
+        self.assertTrue(hybrid)
+        self.assertIn("Remote", hybrid[0]["locations"])
+
+
+class FingerprintExpiryTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="nj-fp-"))
+        self.addCleanup(lambda: shutil.rmtree(self.tmp, ignore_errors=True))
+        self.corpus = self.tmp / "corpus"
+        self.corpus.mkdir()
+        os.environ["NETWORK_JOBS_HOME"] = str(self.tmp)
+
+    def tearDown(self):
+        os.environ.pop("NETWORK_JOBS_HOME", None)
+
+    def _job(self, **kw):
+        base = {
+            "title": "Senior Product Manager",
+            "company": "FatBoard",
+            "category": "product",
+            "location": "New York, NY",
+            "locationBucket": "nyc",
+            "seniority": "senior",
+            "url": "https://fatboard.example/jobs/1",
+            "status": "open",
+        }
+        base.update(kw)
+        return base
+
+    def test_dedupe_by_ats_id_not_url(self):
+        from network_jobs.corpus import merge_jobs, job_fingerprint
+
+        a = self._job(externalId="1", url="https://fatboard.example/jobs/1")
+        b = self._job(externalId="1", url="https://fatboard.example/jobs/1?src=dup")
+        merged = merge_jobs([], [a, b])
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(job_fingerprint(a), job_fingerprint(b))
+
+    def test_dedupe_by_company_title_location(self):
+        from network_jobs.corpus import merge_jobs
+
+        a = self._job(url="https://fatboard.example/jobs/a")
+        b = self._job(url="https://careers.fatboard.example/spm")
+        merged = merge_jobs([], [a, b])
+        self.assertEqual(len(merged), 1)
+
+    def test_expire_only_when_pagination_complete(self):
+        from network_jobs.corpus import merge_jobs, write_shards
+
+        existing = [
+            self._job(externalId="1", url="https://fatboard.example/jobs/1"),
+            self._job(title="Staff Engineer", externalId="2", url="https://fatboard.example/jobs/2",
+                      category="engineering", seniority="senior"),
+        ]
+        incoming = [self._job(externalId="1", url="https://fatboard.example/jobs/1")]
+        kept = merge_jobs(existing, incoming, expire_company="FatBoard", pagination_complete=False)
+        statuses = {j["externalId"]: j.get("status", "open") for j in kept}
+        self.assertEqual(statuses["2"], "open")
+        closed = merge_jobs(existing, incoming, expire_company="FatBoard", pagination_complete=True)
+        statuses = {j["externalId"]: j.get("status", "open") for j in closed}
+        self.assertEqual(statuses["1"], "open")
+        self.assertEqual(statuses["2"], "closed")
+        summary = write_shards(self.corpus, closed)
+        self.assertEqual(summary["totalJobs"], 1)
+        self.assertEqual(summary["closedJobs"], 1)
+        all_jobs = json.loads((self.corpus / "jobs-all.json").read_text())
+        self.assertEqual(len(all_jobs), 2)
+
+    def test_rebuild_helper_honors_complete_flag(self):
+        from network_jobs.corpus import rebuild
+
+        existing = [self._job(externalId="keep"), self._job(title="Old Role", externalId="gone", url="https://x/gone")]
+        (self.corpus / "jobs-all.json").write_text(json.dumps(existing) + "\n")
+        batch = self.tmp / "batch.json"
+        batch.write_text(json.dumps([self._job(externalId="keep")]) + "\n")
+        incomplete = rebuild(batch, self.corpus, expire_company="FatBoard", pagination_complete=False)
+        jobs = json.loads((self.corpus / "jobs-all.json").read_text())
+        self.assertEqual(sum(1 for j in jobs if j.get("status") == "closed"), 0)
+        complete = rebuild(batch, self.corpus, expire_company="FatBoard", pagination_complete=True)
+        self.assertTrue(complete["expired"])
+        jobs = json.loads((self.corpus / "jobs-all.json").read_text())
+        closed = [j for j in jobs if j.get("status") == "closed"]
+        self.assertEqual(len(closed), 1)
+        self.assertEqual(closed[0]["externalId"], "gone")
+        self.assertFalse(incomplete["expired"])
+
+
 if __name__ == "__main__":
     unittest.main()

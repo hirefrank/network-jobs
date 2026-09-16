@@ -8,7 +8,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from .corpus import rebuild
 from .inventory import upsert_inventory, write_summary_json
+from .pagination import DEFAULT_MAX_LISTINGS, DEFAULT_MAX_PAGES, paginate, write_pagination
 from .paths import data_home
 from .prefs import load_resume_keywords, match_listings
 from .rank import DEFAULT_K, rank_corpus
@@ -111,6 +113,48 @@ def cmd_rank(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_paginate(args: argparse.Namespace) -> int:
+    payload = None
+    url = args.url
+    if args.input:
+        payload = _load_json(Path(args.input), None)
+        url = url or ""
+    if not url and payload is None:
+        print("paginate requires --url or --input", file=sys.stderr)
+        return 1
+    result = paginate(
+        url or None,
+        payload=payload if not url else None,
+        max_pages=args.max_pages,
+        max_listings=args.max_listings,
+        source_url=url or str(args.input or ""),
+    )
+    quiet = write_pagination(Path(args.triage_dir), result, company=args.company or "")
+    _dump(quiet, args.verbose)
+    return 0
+
+
+def cmd_rebuild(args: argparse.Namespace) -> int:
+    data = data_home(args.data)
+    complete = bool(args.pagination_complete)
+    if args.pagination_incomplete:
+        complete = False
+    summary = rebuild(
+        Path(args.batch),
+        data / "corpus",
+        expire_company=args.expire_company or None,
+        pagination_complete=complete,
+    )
+    _dump(summary if args.verbose else {
+        "totalJobs": summary["totalJobs"],
+        "incoming": summary["incoming"],
+        "closedJobs": summary.get("closedJobs", 0),
+        "expired": summary.get("expired", False),
+        "paginationComplete": summary.get("paginationComplete", False),
+    }, args.verbose)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="network-jobs-helper", add_help=True)
     p.add_argument("-v", "--verbose", action="store_true", help="print extra fields")
@@ -131,6 +175,23 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--query", default="")
     r.add_argument("--out")
     r.set_defaults(func=cmd_rank)
+
+    g = sub.add_parser("paginate", help="follow page/cursor/offset into listings.json")
+    g.add_argument("--url")
+    g.add_argument("--input", help="local JSON file instead of fetching")
+    g.add_argument("--triage-dir", required=True)
+    g.add_argument("--company", default="")
+    g.add_argument("--max-pages", type=int, default=DEFAULT_MAX_PAGES)
+    g.add_argument("--max-listings", type=int, default=DEFAULT_MAX_LISTINGS)
+    g.set_defaults(func=cmd_paginate)
+
+    b = sub.add_parser("rebuild", help="merge batch into corpus by fingerprint")
+    b.add_argument("batch")
+    b.add_argument("--data")
+    b.add_argument("--expire-company", default="")
+    b.add_argument("--pagination-complete", action="store_true")
+    b.add_argument("--pagination-incomplete", action="store_true")
+    b.set_defaults(func=cmd_rebuild)
 
     return p
 
