@@ -376,5 +376,90 @@ class FingerprintExpiryTests(unittest.TestCase):
         self.assertFalse(incomplete["expired"])
 
 
+class ClassifierLocationTests(unittest.TestCase):
+    def test_track_and_category_deterministic(self):
+        from network_jobs.classify import classify_job
+
+        pm = classify_job({"title": "Senior Product Manager", "department": "Product", "location": "NYC"}, company="Stripe")
+        self.assertEqual(pm["category"], "product")
+        self.assertEqual(pm["track"], "ic")
+        self.assertEqual(pm["categoryConfidence"], "high")
+        em = classify_job({"title": "Engineering Manager", "location": "Remote"}, company="Stripe")
+        self.assertEqual(em["category"], "engineering")
+        self.assertEqual(em["track"], "manager")
+        self.assertIn("track", em)
+
+    def test_intern_and_staff_plus_signals(self):
+        from network_jobs.classify import classify_job
+
+        intern = classify_job({"title": "Product Manager Intern", "location": "New York, NY"}, company="X")
+        self.assertEqual(intern["seniority"], "mid")
+        self.assertIn("intern", intern["senioritySignals"])
+        staff = classify_job({"title": "Staff Product Manager", "location": "Remote"}, company="X")
+        self.assertEqual(staff["seniority"], "senior")
+        self.assertIn("staff+", staff["senioritySignals"])
+
+    def test_ambiguous_titles_flag_needs_llm(self):
+        from network_jobs.classify import classify_listings
+
+        result = classify_listings([{"title": "Lead", "location": "Remote"}], company="X")
+        self.assertGreaterEqual(result["ambiguous"], 1)
+        self.assertTrue(result["jobs"][0]["needsLlm"])
+
+    def test_hybrid_hits_both_shards(self):
+        from network_jobs.classify import classify_job
+        from network_jobs.corpus import write_shards
+
+        tmp = Path(tempfile.mkdtemp(prefix="nj-hyb-"))
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        job = classify_job({
+            "title": "Staff Product Manager",
+            "location": "New York, NY or Remote",
+            "url": "https://example.com/hybrid",
+        }, company="FatBoard")
+        self.assertIn("nyc", job["locationBuckets"])
+        self.assertIn("remote", job["locationBuckets"])
+        write_shards(tmp, [job])
+        self.assertTrue((tmp / "product-nyc-senior.json").is_file())
+        self.assertTrue((tmp / "product-remote-senior.json").is_file())
+        nyc = json.loads((tmp / "product-nyc-senior.json").read_text())
+        remote = json.loads((tmp / "product-remote-senior.json").read_text())
+        self.assertEqual(nyc[0]["fingerprint"], remote[0]["fingerprint"])
+
+    def test_onsite_locations_scope_city_not_every_office(self):
+        from network_jobs.prefs import score_job
+
+        prefs = json.loads((FIXTURES / "preferences.json").read_text())
+        london = score_job({
+            "title": "Senior Product Manager",
+            "location": "London, UK",
+            "department": "Product",
+        }, prefs, company="Example")
+        nyc = score_job({
+            "title": "Senior Product Manager",
+            "location": "New York, NY",
+            "department": "Product",
+        }, prefs, company="Example")
+        self.assertFalse(london["matched"])
+        self.assertTrue(nyc["matched"])
+        self.assertEqual(nyc["locations"][0]["city"], "New York")
+
+    def test_classify_helper(self):
+        tmp = Path(tempfile.mkdtemp(prefix="nj-clf-"))
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        src = tmp / "in.json"
+        src.write_text(json.dumps([
+            {"title": "Senior Product Manager", "location": "New York, NY"},
+            {"title": "Lead", "location": "Remote"},
+        ]) + "\n")
+        dest = tmp / "out.json"
+        rc = helper_main(["classify", "--input", str(src), "--out", str(dest), "--company", "Stripe"])
+        self.assertEqual(rc, 0)
+        jobs = json.loads(dest.read_text())
+        self.assertEqual(jobs[0]["track"], "ic")
+        self.assertEqual(jobs[0]["category"], "product")
+        self.assertTrue(any(j.get("needsLlm") for j in jobs))
+
+
 if __name__ == "__main__":
     unittest.main()

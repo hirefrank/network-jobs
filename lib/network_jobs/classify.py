@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from .fingerprint import fingerprint
 from .locations import location_buckets_for, parse_locations, primary_location_bucket
 from .text import collapse_ws, slugify, tokenize
 
@@ -181,6 +182,9 @@ def classify_job(job: dict[str, Any], company: str | None = None) -> dict[str, A
     out["locationBuckets"] = buckets
     out["locationBucket"] = primary_location_bucket(job)
     out["needsLlm"] = bool(cat_amb or track_amb)
+    out["fingerprint"] = fingerprint(out, company=out.get("company"))
+    company_slug = slugify(str(out.get("company") or "company"))
+    out.setdefault("id", job_id_for(out, company_slug, out["fingerprint"]))
     if parsed and not out.get("location"):
         out["location"] = parsed[0].get("raw") or ""
     return out

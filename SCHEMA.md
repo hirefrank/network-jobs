@@ -89,7 +89,7 @@ Search and discovery defaults from a **résumé-grounded** agent interview (not 
 | `locations` | Free-text places the user cares about (display / soft filter) |
 | `onsiteLocations` | Where onsite/hybrid is acceptable. **Required whenever `workModes` includes `hybrid` or `onsite`.** Never treat “open to onsite” as every office worldwide — scope it to these places (and matching `locationBuckets`). |
 | `categories` | Preferred role categories (same 15 as corpus) |
-| `seniority` | `senior` and/or `mid` |
+| `seniority` | `senior` and/or `mid`; extra signals `staff+` / `intern` are honored when present |
 | `track` | `ic` \| `manager` \| `either` (individual contributor vs people manager) |
 | `companyStages` | Free-form tags the user cares about (e.g. `seed`, `series-a`, `growth`, `public`) |
 | `companySizes` | Optional size bands the user stated (free-form) |
@@ -292,12 +292,20 @@ Identity is **`fingerprint`**, not URL: `id:{company}:{atsId}` when `externalId`
 | `remote` | Fully remote (or remote-first) |
 | `other` | Everything else |
 
+Hybrid strings such as `New York, NY or Remote` set **`locationBuckets`: `["nyc","remote"]`** so the same job is written to both granular shards. Parsed `locations[].city` / `.region` are used with `onsiteLocations` (never “every office worldwide”).
+
 ### Seniority buckets
+
+Keep `senior` / `mid` shards as the fast path.
 
 | Bucket | Title signals |
 |--------|----------------|
 | `senior` | Senior, Staff, Principal, Lead, Director, VP, Head of |
-| `mid` | Everything else |
+| `mid` | Everything else (including internships) |
+
+Additional **`senioritySignals`** on the job object: `intern`, `staff+`. Prefs or queries can filter those without new shard files. Interns stay in `mid`; Staff/Principal stay in `senior` plus `staff+`.
+
+`track` is persisted on the job (`ic` | `manager`) by the classifier.
 
 ### manifest.json
 

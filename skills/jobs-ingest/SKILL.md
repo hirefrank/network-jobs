@@ -31,17 +31,17 @@ Read [SCHEMA.md](../../SCHEMA.md) first.
    - “ingest Product” / a department name → filter that set by `department`
    - If `matches.json` is missing, fall back to `listings.json` and say so
 3. **Read** the chosen listings + `INVENTORY.md` (quote **N of M match prefs**, not the raw board)
-4. **Normalize each listing** into a corpus job object:
-   - `id` — stable slug: `{companySlug}-{title-slug}-{fingerprint-tail}`
-   - `fingerprint` — ATS `externalId` or company+normalized title+locations (not URL)
-   - `company` / `companyDomain` — from company graph + discovery notes
-   - `category` — map title/department to one of the 15 categories (model judgment; see network-jobs reference)
-   - `location` plus `locations[]` when the posting names more than one office
-   - `locationBucket` — `nyc` | `sf` | `remote` | `other`
-   - `seniority` — `senior` if title matches Senior/Staff/Principal/Lead/Director/VP/Head; else `mid`
-   - `status` — `open` (re-open if a previously closed fingerprint returns)
-   - `firstSeen` / `lastSeen` — today (ISO date) if new; bump `lastSeen` if fingerprint already in corpus
-   - Keep `salary` / `postedAt` only if present in triage
+4. **Classify** with the helper (required) — do not category-map the whole board in the model:
+
+```bash
+python3 "$SUITE/skills/jobs-ingest/helpers/classify-listings.py" \
+  --input "$DATA/corpus/.work/raw.json" --out "$DATA/corpus/.work/batch.json" \
+  --company "$NAME"
+```
+
+   Persist `category`, `track`, `seniority`, `senioritySignals` (`intern` / `staff+`), parsed `locations[]`, `locationBuckets` (hybrid NYC-or-Remote hits both), and `fingerprint`.
+   **LLM only for `needsLlm` titles** (ambiguous lead/head/player-coach). Leave high-confidence rows alone.
+   Fill `companyDomain` from the graph when known. Keep `salary` / `postedAt` only if present in triage.
 5. **Merge** into corpus via helper (required):
    - Write the **new/updated jobs only** to a working file (e.g. `$DATA/corpus/.work/batch.json`)
    - Read `index/pagination.json` (or INVENTORY). Pass `--pagination-complete` **only** when `complete` is true.
@@ -67,10 +67,15 @@ Read [SCHEMA.md](../../SCHEMA.md) first.
 
 ## Location heuristics
 
+Buckets remain the fast path. The classifier also parses city/region onto `locations[]`.
+
 - NYC / New York / Brooklyn / Manhattan → `nyc`
 - SF / San Francisco / Bay Area / Palo Alto / Mountain View / Oakland → `sf`
 - Remote / Distributed / Work from home → `remote`
+- `New York, NY or Remote` → **both** `nyc` and `remote` shards
 - else → `other`
+
+Honor `preferences.onsiteLocations` when matching hybrid/onsite (explicit cities, not every office).
 
 ## Helper
 
@@ -78,12 +83,19 @@ Read [SCHEMA.md](../../SCHEMA.md) first.
 DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
 SUITE="$(cat "$DATA/suite-root" 2>/dev/null || true)"
 SUITE="${NETWORK_JOBS_SUITE:-${SUITE:-}}"
-# After normalizing a triage batch to $DATA/corpus/.work/batch.json:
+python3 "$SUITE/skills/jobs-ingest/helpers/classify-listings.py" \
+  --input "$DATA/corpus/.work/raw.json" --out "$DATA/corpus/.work/batch.json" --company "$NAME"
+# After classifying (and optionally LLM-fixing needsLlm rows):
 "$SUITE/skills/jobs-ingest/helpers/rebuild-corpus.sh" "$DATA/corpus/.work/batch.json" \
   --expire-company "$SLUG" --pagination-complete   # only if pagination.complete
 ```
 
-The helper merges by fingerprint with existing `corpus/jobs-all.json`, shards by category/location/seniority, rewrites `manifest.json`, removes stale shard files, and closes unseen jobs for `--expire-company` **only** when `--pagination-complete` is set.
+The classify helper is deterministic. Only send `needsLlm` titles to the model. Rebuild merges by fingerprint, shards by category/location/seniority (hybrid jobs land in every `locationBuckets` shard), and closes unseen jobs for `--expire-company` **only** when `--pagination-complete` is set.
+
+## Helpers
+
+- [`helpers/classify-listings.py`](helpers/classify-listings.py) — title/department → category, track, senioritySignals, locationBuckets
+- [`helpers/rebuild-corpus.sh`](helpers/rebuild-corpus.sh) — fingerprint merge + shards; expire only if pagination.complete
 
 ## Related
 

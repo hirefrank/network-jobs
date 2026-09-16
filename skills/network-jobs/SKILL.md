@@ -79,9 +79,11 @@ When the user does **not** specify location / mode / seniority / category / trac
    - `remote` only → prefer `locationBucket=remote`.
    - Includes `hybrid` / `onsite` → include city buckets that match `onsiteLocations` / `locations` / `locationBuckets` — **not** every non-remote job worldwide.
    - If `hybrid`/`onsite` is set but `onsiteLocations` is empty, ask once or fall back to `locations` / city `locationBuckets` only; never expand to global onsite.
-4. Honor `track` when filtering titles: `manager` → prefer Manager/Director/Head/EM/VP people-lead titles; `ic` → de-prioritize pure people-manager titles unless query asks; `either` → no track filter.
-5. Soft-filter with `locations`, `industries`, `companyStages`, `mustHaves`, `dealBreakers`, `notes`, `salaryMin` in judgment — do not invent salary on jobs that lack it.
-6. **Former employers:** read `formerEmployers` + `formerEmployerPolicy`.
+4. Honor `track` when filtering titles: `manager` → prefer Manager/Director/Head/EM/VP people-lead titles; `ic` → de-prioritize pure people-manager titles unless query asks; `either` → no track filter. Prefer the persisted `track` field on the job when present.
+5. Honor `senioritySignals`: intern roles only when asked; `staff+` when the user wants Staff/Principal.
+6. Soft-filter with `locations` / parsed `locations[].city`, `industries`, `companyStages`, `mustHaves`, `dealBreakers`, `notes`, `salaryMin` in judgment — do not invent salary on jobs that lack it.
+   Hybrid NYC-or-Remote jobs live in both shards; `onsiteLocations` still gates in-person cities.
+7. **Former employers:** read `formerEmployers` + `formerEmployerPolicy`.
    - `exclude` — omit those companies from default result sets (still show if the user named the company).
    - `include` — treat like any other company.
    - `ask` — if matches appear, list them separately and ask before emphasizing / expanding.

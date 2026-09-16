@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from .classify import classify_listings
 from .corpus import rebuild
 from .inventory import upsert_inventory, write_summary_json
 from .pagination import DEFAULT_MAX_LISTINGS, DEFAULT_MAX_PAGES, paginate, write_pagination
@@ -155,6 +156,26 @@ def cmd_rebuild(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_classify(args: argparse.Namespace) -> int:
+    listings = _load_json(Path(args.input), [])
+    if not isinstance(listings, list):
+        print("input must be a JSON array", file=sys.stderr)
+        return 1
+    result = classify_listings(listings, company=args.company or None)
+    dest = Path(args.out) if args.out else Path(args.input)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(json.dumps(result["jobs"], indent=2, ensure_ascii=False) + "\n")
+    quiet = {
+        "n": result["n"],
+        "ambiguous": result["ambiguous"],
+        "out": str(dest),
+    }
+    if args.verbose:
+        quiet["needsLlm"] = result["needsLlm"]
+    _dump(quiet, args.verbose)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="network-jobs-helper", add_help=True)
     p.add_argument("-v", "--verbose", action="store_true", help="print extra fields")
@@ -192,6 +213,12 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--pagination-complete", action="store_true")
     b.add_argument("--pagination-incomplete", action="store_true")
     b.set_defaults(func=cmd_rebuild)
+
+    c = sub.add_parser("classify", help="title/department → category, track, seniority")
+    c.add_argument("--input", required=True)
+    c.add_argument("--out")
+    c.add_argument("--company", default="")
+    c.set_defaults(func=cmd_classify)
 
     return p
 
