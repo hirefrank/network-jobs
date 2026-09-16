@@ -36,7 +36,8 @@ Default: `~/.network-jobs/` (override with `NETWORK_JOBS_HOME`).
 │   ├── <category>.json
 │   └── <category>-<loc>-<seniority>.json
 ├── search/
-│   └── ranked.json                   # top-K from local ranker
+│   ├── ranked.json                   # top-K from local ranker
+│   └── intros.json                   # 1–2 roles + 1–2 forwarders
 └── logs/
     └── setup.log
 ```
@@ -147,7 +148,10 @@ Aggregated company graph (connection counts + sample people):
     "connectionCount": 12,
     "people": [
       { "name": "Jane Doe", "position": "PM", "url": "https://www.linkedin.com/in/jane" }
-    ]
+    ],
+    "lastCrawl": "2026-09-16T02:00:00Z",
+    "listingSetHash": "a1b2c3d4e5f60789",
+    "lastPagination": { "pages": 4, "complete": true, "truncated": false }
   }
 ]
 ```
@@ -155,7 +159,8 @@ Aggregated company graph (connection counts + sample people):
 - `normalized` — lowercase, punctuation/suffix stripped (see import helper).
 - `slug` — filesystem-safe form of `normalized`.
 - `domain` — filled later during careers discovery when known.
-- `people` — up to 10 sample connections (not the full roster).
+- `people` — up to 10 sample connections (not the full roster). **Intro ranking joins `connections.json`**, not this sample.
+- `lastCrawl` / `listingSetHash` / `lastPagination` — crawl budget. If the listing-set hash matches, skip refresh/ingest (delta is empty). Stamp after a successful paginated extract. Caps: 15 API pages, 5 browser “load more” pages, 2000 listings.
 
 ## Triage (careers-discover output)
 
@@ -344,7 +349,7 @@ Additional **`senioritySignals`** on the job object: `intern`, `staff+`. Prefs o
 | `careers-discover` | `companies/`, `preferences.json` (optional focus) | `triage/` (`listings.json` + `matches.json`) |
 | `jobs-ingest` | `triage/` (`matches.json` by default, or all / department slice) | `corpus/` |
 | `network-jobs` | `corpus/`, `profile.json`, `preferences.json`, `resume/` | `search/ranked.json` |
-| `intro-email-generator` | `profile.json`, `resume/text.md`, job context | — (draft in chat) |
+| `intro-email-generator` | `profile.json`, `resume/text.md`, `connections.json`, `search/intros.json` | `search/intros.json` |
 
 CLI helpers: `network-jobs profile import <file>` stores the résumé; `network-jobs profile show` prints profile + prefs + resume status.
 

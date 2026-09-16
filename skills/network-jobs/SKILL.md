@@ -88,7 +88,7 @@ When the user does **not** specify location / mode / seniority / category / trac
    - `include` — treat like any other company.
    - `ask` — if matches appear, list them separately and ask before emphasizing / expanding.
    Match company names case-insensitively / lightly normalized (ignore Inc, LLC, etc.).
-7. If the user query conflicts with prefs, **query wins**.
+8. If the user query conflicts with prefs, **query wins**.
 
 Mention once when defaults applied: e.g. `Using your prefs: remote + NYC, product, senior IC (excluding former employers)`.
 
@@ -173,5 +173,5 @@ Connections at Justworks: …
 
 - **network-jobs-setup** — profile, résumé, preferences interview
 - **careers-discover** / **jobs-ingest** — refresh local openings
-- **intro-email-generator** — draft forwardable warm intro (pass job URL + forwarder name; résumé from `~/.network-jobs/resume/`)
+- **intro-email-generator** — draft forwardable warm intro. After ranked jobs, run `rank-intros.py` (1–2 roles, 1–2 forwarders; fetch JD only for those URLs).
 - **network-jobs-import** — refresh LinkedIn graph

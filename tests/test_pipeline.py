@@ -461,5 +461,91 @@ class ClassifierLocationTests(unittest.TestCase):
         self.assertTrue(any(j.get("needsLlm") for j in jobs))
 
 
+class CrawlAndIntroTests(unittest.TestCase):
+    def test_listing_set_hash_skip_unchanged(self):
+        from network_jobs.crawl import crawl_status, stamp_company_crawl
+
+        tmp = Path(tempfile.mkdtemp(prefix="nj-crawl-"))
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        companies = tmp / "companies.json"
+        listings = [
+            {"title": "Senior PM", "url": "https://x/1", "externalId": "1", "location": "Remote"},
+            {"title": "Staff Engineer", "url": "https://x/2", "externalId": "2", "location": "NYC"},
+        ]
+        companies.write_text("[]\n")
+        first = stamp_company_crawl(companies, "stripe", listings, pagination={"pages": 1, "complete": True, "truncated": False}, company_name="Stripe")
+        self.assertFalse(first["unchanged"])
+        graph = json.loads(companies.read_text())
+        self.assertEqual(graph[0]["listingSetHash"], first["listingSetHash"])
+        self.assertIn("lastCrawl", graph[0])
+        second = crawl_status(graph, "stripe", listings, company_name="Stripe")
+        self.assertTrue(second["unchanged"])
+        listings2 = listings + [{"title": "New Role", "url": "https://x/3", "externalId": "3", "location": "Remote"}]
+        third = crawl_status(graph, "stripe", listings2, company_name="Stripe")
+        self.assertFalse(third["unchanged"])
+
+    def test_incomplete_pagination_does_not_block_hash_but_skill_still_skips_expiry(self):
+        from network_jobs.crawl import stamp_company_crawl
+
+        tmp = Path(tempfile.mkdtemp(prefix="nj-crawl2-"))
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        companies = tmp / "companies.json"
+        companies.write_text("[]\n")
+        listings = [{"title": "PM", "url": "https://x/1", "externalId": "1"}]
+        status = stamp_company_crawl(
+            companies, "acme", listings,
+            pagination={"pages": 2, "complete": False, "truncated": True},
+            company_name="Acme",
+        )
+        graph = json.loads(companies.read_text())
+        self.assertEqual(graph[0]["lastPagination"]["complete"], False)
+        self.assertTrue(status["listingSetHash"])
+
+    def test_rank_intros_picks_two_roles_and_forwarders(self):
+        from network_jobs.intros import rank_intros
+
+        jobs = [
+            {"title": "Senior Product Manager", "company": "Stripe", "department": "Product", "category": "product", "track": "ic", "url": "https://stripe.com/jobs/pm", "status": "open"},
+            {"title": "Staff Engineer", "company": "Stripe", "department": "Infrastructure", "category": "engineering", "track": "ic", "url": "https://stripe.com/jobs/eng", "status": "open"},
+            {"title": "Account Executive", "company": "Figma", "department": "Sales", "url": "https://figma.com/jobs/ae", "status": "open"},
+        ]
+        connections = [
+            {"firstName": "Jane", "lastName": "Doe", "company": "Stripe", "position": "Product Manager", "url": "https://linkedin.com/in/jane"},
+            {"firstName": "Eve", "lastName": "Kim", "company": "Stripe", "position": "Staff Engineer", "url": "https://linkedin.com/in/eve"},
+            {"firstName": "John", "lastName": "Smith", "company": "Stripe", "position": "Engineer", "url": "https://linkedin.com/in/john"},
+            {"firstName": "Alice", "lastName": "Chen", "company": "Figma", "position": "Designer", "url": "https://linkedin.com/in/alice"},
+        ]
+        result = rank_intros(jobs, connections, k_roles=2, k_forwarders=2)
+        self.assertEqual(result["kRoles"], 2)
+        self.assertEqual(len(result["fetchJdUrls"]), 2)
+        self.assertTrue(result["useDepartmentWithoutJd"])
+        stripe_pm = result["roles"][0]
+        self.assertEqual(len(stripe_pm["forwarders"]), 2)
+        self.assertEqual(stripe_pm["forwarders"][0]["name"], "Jane Doe")
+        self.assertEqual(stripe_pm["department"], "Product")
+
+    def test_rank_intros_helper(self):
+        tmp = Path(tempfile.mkdtemp(prefix="nj-intro-"))
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        (tmp / "search").mkdir()
+        (tmp / "connections").mkdir()
+        ranked = {
+            "jobs": [
+                {"title": "Senior Product Manager", "company": "Stripe", "department": "Product", "url": "https://stripe.com/jobs/pm"},
+                {"title": "Staff Engineer", "company": "Stripe", "department": "Engineering", "url": "https://stripe.com/jobs/eng"},
+            ]
+        }
+        (tmp / "search" / "ranked.json").write_text(json.dumps(ranked) + "\n")
+        (tmp / "connections" / "connections.json").write_text(json.dumps([
+            {"firstName": "Jane", "lastName": "Doe", "company": "Stripe", "position": "PM", "url": "https://linkedin.com/in/jane"},
+            {"firstName": "John", "lastName": "Smith", "company": "Stripe", "position": "Engineer", "url": "https://linkedin.com/in/john"},
+        ]) + "\n")
+        rc = helper_main(["rank-intros", "--data", str(tmp), "--k-roles", "2", "--k-forwarders", "2"])
+        self.assertEqual(rc, 0)
+        intros = json.loads((tmp / "search" / "intros.json").read_text())
+        self.assertEqual(len(intros["fetchJdUrls"]), 2)
+        self.assertLessEqual(len(intros["roles"]), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -29,7 +29,7 @@ Read [SCHEMA.md](../../SCHEMA.md) first.
    - Default / “ingest these” / “ingest matches” → `index/matches.json` (`.jobs`)
    - “ingest all” → `index/listings.json`
    - “ingest Product” / a department name → filter that set by `department`
-   - If `matches.json` is missing, fall back to `listings.json` and say so
+   - If crawl-state said `unchanged: true`, **skip ingest** (delta empty) unless the user insists.
 3. **Read** the chosen listings + `INVENTORY.md` (quote **N of M match prefs**, not the raw board)
 4. **Classify** with the helper (required) — do not category-map the whole board in the model:
 

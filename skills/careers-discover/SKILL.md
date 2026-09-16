@@ -82,7 +82,19 @@ $DATA/triage/careers-<slug>-<YYYY-MM-DD>/
 
 Use [`helpers/stage-company.sh`](helpers/stage-company.sh) to mkdir + write skeleton files, then fill listings.
 
-6. **Shortlist against prefs (required helper)**
+6. **Crawl budget (required helper)**
+
+```bash
+python3 "$SUITE/skills/careers-discover/helpers/crawl-state.py" \
+  --triage-dir "$TRIAGE" --company "$NAME"
+# After a successful extract (even truncated), stamp lastCrawl + hash:
+python3 "$SUITE/skills/careers-discover/helpers/crawl-state.py" \
+  --triage-dir "$TRIAGE" --company "$NAME" --stamp
+```
+
+Compares listing-set hash to `companies.json`. Caps: **15 API pages**, **5 browser load-more pages**, 2000 listings. Fetch-log metadata is written per page by paginate (default). If `unchanged: true`, say so and **skip ingest** (delta is empty) — do not expire anything. If the hash changed, ingest is a fingerprint merge (new/changed rows only; expiry still requires `pagination.complete`).
+
+7. **Shortlist against prefs (required helper)**
 
 After `index/listings.json` is written, run — do **not** score the board in the model:
 
@@ -96,16 +108,17 @@ python3 "$SUITE/skills/careers-discover/helpers/match-prefs.py" \
 
 This writes `index/matches.json` and patches INVENTORY with **N of M match prefs** plus a department histogram. Quiet JSON on stdout (`-v` for departments).
 
-7. **INVENTORY.md must include**
+8. **INVENTORY.md must include**
    - Company name + slug
    - Careers URL(s) used
    - Listing count **and** “N of M match prefs”
    - Department histogram (from the helper)
+   - Pagination `{pages, complete, truncated}` and crawl hash / skip-if-unchanged
    - Connections at company (from graph) + sample people
    - Caveats (bot wall, partial pagination, uncertain domain)
    - Next steps (“ingest matches?” / “ingest all” / department slice)
 
-8. **Hand off (hard stop)**
+9. **Hand off (hard stop)**
    - Point at each triage dir. Quote the helper’s `showing` line (e.g. `14 of 120 match prefs`) — do not paste the full listings array.
    - Ask whether to run `jobs-ingest` on **matches** (default), **all** listings, or a department slice.
    - **STOP.** Do **not** invoke `jobs-ingest`, rebuild the corpus, or resume a job search in the same turn.
@@ -132,7 +145,7 @@ Use when tier 1 yields:
 - Pagination or filters that require click / “Load more” / infinite scroll
 - Client-side routing where listing URLs aren’t discoverable from static HTML
 
-Workflow: open URL → snapshot → interact by refs → re-snapshot after DOM changes → write fetch-log before summarizing.
+Workflow: open URL → snapshot → interact by refs → re-snapshot after DOM changes → write fetch-log before summarizing. Cap **5** “Load more” / next-page clicks; if you stop early, pagination.complete is false.
 
 ### 3. User capture / CDP
 
@@ -154,6 +167,7 @@ Never start with agent-browser for a simple static page. Never keep retrying bro
 - [`helpers/stage-company.sh`](helpers/stage-company.sh) — create triage dir skeleton
 - [`helpers/fetch-page.sh`](helpers/fetch-page.sh) — curl page to fetch-log + stdout path
 - [`helpers/paginate-listings.py`](helpers/paginate-listings.py) — page/cursor/offset into `listings.json` + `pagination.json`
+- [`helpers/crawl-state.py`](helpers/crawl-state.py) — listing-set hash vs lastCrawl; `--stamp` after a successful extract
 - [`helpers/match-prefs.py`](helpers/match-prefs.py) — score listings vs `preferences.json` → `index/matches.json`
 
 ## Related

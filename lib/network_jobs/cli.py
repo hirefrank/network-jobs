@@ -176,6 +176,100 @@ def cmd_classify(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_crawl_state(args: argparse.Namespace) -> int:
+    from .crawl import crawl_status, stamp_company_crawl
+    from .inventory import upsert_inventory, write_summary_json
+
+    data = data_home(args.data)
+    triage = Path(args.triage_dir).expanduser().resolve() if args.triage_dir else None
+    listings_path = Path(args.listings) if args.listings else (
+        (triage / "index" / "listings.json") if triage else None
+    )
+    if listings_path is None:
+        print("crawl-state requires --listings or --triage-dir", file=sys.stderr)
+        return 1
+    listings = _load_json(listings_path, [])
+    if not isinstance(listings, list):
+        listings = []
+    companies_path = Path(args.companies) if args.companies else data / "companies" / "companies.json"
+    companies = _load_json(companies_path, [])
+    if not isinstance(companies, list):
+        companies = []
+    pagination = {}
+    if triage and (triage / "index" / "pagination.json").is_file():
+        pagination = _load_json(triage / "index" / "pagination.json", {}) or {}
+    if args.stamp:
+        status = stamp_company_crawl(
+            companies_path,
+            args.company or args.slug,
+            listings,
+            pagination=pagination if isinstance(pagination, dict) else None,
+            company_name=args.company or None,
+        )
+    else:
+        status = crawl_status(
+            companies,
+            args.company or args.slug,
+            listings,
+            company_name=args.company or None,
+        )
+    if triage:
+        summary = _load_json(triage / "index" / "summary.json", {})
+        if not isinstance(summary, dict):
+            summary = {}
+        summary["crawl"] = {
+            "unchanged": status.get("unchanged"),
+            "listingSetHash": status.get("listingSetHash"),
+            "lastCrawl": status.get("lastCrawl"),
+        }
+        write_summary_json(triage / "index", summary)
+        upsert_inventory(triage / "INVENTORY.md", summary)
+    quiet = {
+        "unchanged": status.get("unchanged"),
+        "listingSetHash": status.get("listingSetHash"),
+        "lastCrawl": status.get("lastCrawl"),
+        "skipIngest": bool(status.get("unchanged")),
+    }
+    if args.verbose:
+        quiet.update(status)
+    _dump(quiet, args.verbose)
+    return 0
+
+
+def cmd_rank_intros(args: argparse.Namespace) -> int:
+    from .intros import rank_intros
+    from .paths import data_home as dh
+
+    data = dh(args.data)
+    jobs_path = Path(args.jobs) if args.jobs else data / "search" / "ranked.json"
+    payload = _load_json(jobs_path, {})
+    if isinstance(payload, dict):
+        jobs = payload.get("jobs") or []
+    elif isinstance(payload, list):
+        jobs = payload
+    else:
+        jobs = []
+    connections = _load_json(
+        Path(args.connections) if args.connections else data / "connections" / "connections.json",
+        [],
+    )
+    if not isinstance(connections, list):
+        connections = []
+    result = rank_intros(jobs, connections, k_roles=args.k_roles, k_forwarders=args.k_forwarders)
+    dest = Path(args.out) if args.out else data / "search" / "intros.json"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
+    quiet = {
+        "roles": result["kRoles"],
+        "forwarders": args.k_forwarders,
+        "fetchJdUrls": result["fetchJdUrls"],
+        "out": str(dest),
+        "showing": result["showing"],
+    }
+    _dump(quiet, args.verbose)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="network-jobs-helper", add_help=True)
     p.add_argument("-v", "--verbose", action="store_true", help="print extra fields")
@@ -219,6 +313,25 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--out")
     c.add_argument("--company", default="")
     c.set_defaults(func=cmd_classify)
+
+    cr = sub.add_parser("crawl-state", help="listing-set hash vs lastCrawl; skip unchanged boards")
+    cr.add_argument("--triage-dir")
+    cr.add_argument("--listings")
+    cr.add_argument("--companies")
+    cr.add_argument("--data")
+    cr.add_argument("--company", default="")
+    cr.add_argument("--slug", default="")
+    cr.add_argument("--stamp", action="store_true", help="write lastCrawl + hash onto companies.json")
+    cr.set_defaults(func=cmd_crawl_state)
+
+    ri = sub.add_parser("rank-intros", help="1–2 roles + 1–2 forwarders from full connections.json")
+    ri.add_argument("--data")
+    ri.add_argument("--jobs")
+    ri.add_argument("--connections")
+    ri.add_argument("--out")
+    ri.add_argument("--k-roles", type=int, default=2)
+    ri.add_argument("--k-forwarders", type=int, default=2)
+    ri.set_defaults(func=cmd_rank_intros)
 
     return p
 
