@@ -45,7 +45,8 @@ def parse_salary(raw: Any) -> dict[str, Any] | None:
 
     hourly = bool(_HOURLY_RE.search(s))
     currency = "USD"
-    for sym, code in _CURRENCY.items():
+    # Check longer symbols first: "$" is a substring of "C$" and "A$".
+    for sym, code in sorted(_CURRENCY.items(), key=lambda kv: -len(kv[0])):
         if sym in s:
             currency = code
             break

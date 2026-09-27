@@ -985,6 +985,20 @@ class SalaryParseTests(unittest.TestCase):
         self.assertIsNone(parse_salary("competitive pay"))
         self.assertIsNone(parse_salary(None))
 
+    def test_prefixed_dollar_currencies(self):
+        from network_jobs.salary import parse_salary
+
+        # "$" must not win over the longer "C$"/"A$" symbols.
+        self.assertEqual(parse_salary("C$150k")["currency"], "CAD")
+        self.assertEqual(parse_salary("A$200k")["currency"], "AUD")
+        self.assertEqual(parse_salary("$150k")["currency"], "USD")
+
+    def test_fmt_salary_marks_hourly(self):
+        from network_jobs.cli import _fmt_salary
+
+        self.assertEqual(_fmt_salary({"min": 75, "max": 75, "unit": "hourly"}), "$75/hr")
+        self.assertEqual(_fmt_salary({"min": 150000, "max": 180000}), "$150k–$180k")
+
 
 class PaginationNormalizeTests(unittest.TestCase):
     def test_string_salary_parsed(self):

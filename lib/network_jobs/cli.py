@@ -146,8 +146,12 @@ def _fmt_salary(salary: Any) -> str:
         return f"${v / 1000:.0f}k" if v >= 1000 else f"${v:.0f}"
 
     if isinstance(lo, (int, float)) and isinstance(hi, (int, float)) and lo != hi:
-        return f"{fmt(lo)}–{fmt(hi)}"
-    return fmt(hi if hi is not None else lo)
+        text = f"{fmt(lo)}–{fmt(hi)}"
+    else:
+        text = fmt(hi if hi is not None else lo)
+    if salary.get("unit") == "hourly":
+        text += "/hr"
+    return text
 
 
 def _fmt_age_days(age: int | None) -> str:
