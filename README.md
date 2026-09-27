@@ -4,6 +4,17 @@ Local-first agent skill suite: import your résumé and preferences, import Link
 
 Works with any agent that loads [Agent Skills](https://agentskills.io) (Claude Code, Cursor, Codex, OpenCode, Pi, and others).
 
+## For agents
+
+If you're an agent working from this repo rather than a human reading it:
+
+1. **Install the skills into yourself** — `npx --yes 'github:hirefrank/network-jobs#main' setup --agent auto` (or `npx skills add hirefrank/network-jobs -g -a …`, then `network-jobs setup` for data + launcher).
+2. **Start with `network-jobs-setup`** — it turns the user's résumé into `profile.json` + `preferences.json` via an interview. Everything downstream reads those two files.
+3. **Follow the skills table below** — each `SKILL.md` is self-contained and states its inputs/outputs. The day-to-day pair is `careers-discover` + `jobs-ingest` (build the corpus) and `network-jobs` (search it).
+4. **For routing**, run `network-jobs routing` — it prints a snippet to drop into a project instruction file so future sessions pick the right skill.
+
+Always read [SCHEMA.md](SCHEMA.md) for data paths and JSON shapes. Daily use lives in the agent; the CLI covers setup, import, and quick `search` / `companies` / `refresh`.
+
 ## Install
 
 ```bash
