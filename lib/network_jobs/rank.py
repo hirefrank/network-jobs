@@ -95,7 +95,12 @@ def _iter_shards(corpus: Path, prefs: dict[str, Any], query: str | None) -> tupl
     files: list[Path] = []
     cats = wanted_cats or list(categories.keys())
     locs = wanted_locs or ["nyc", "sf", "remote", "other"]
-    sens = [s for s in wanted_sen if s in ("senior", "mid")] or ["senior", "mid"]
+    # Seniority is a soft scoring signal, not a shard filter: always load
+    # both senior and mid shards and let score_job rank them. (Interns live
+    # in mid shards, staff+ in senior shards.) Filtering here used to hide
+    # "mid"-classified roles — e.g. plain-titled "Product Manager" postings —
+    # from senior seekers before scoring ever saw them.
+    sens = ["senior", "mid"]
 
     for cat in cats:
         meta = categories.get(cat) or {}

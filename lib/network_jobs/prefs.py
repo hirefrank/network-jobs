@@ -154,18 +154,29 @@ def score_job(
     elif intern_pref and "intern" in signals:
         score += 4
         reasons.append("intern")
+    elif "junior" in signals and sen_prefs and not intern_pref and not staff_pref:
+        # Positive junior signal ("Associate", "Junior", "Entry-Level") is a
+        # real mismatch for senior/staff seekers — same treatment as intern.
+        hard_fail = True
+        reasons.append("junior-mismatch")
     elif staff_pref:
         if "staff+" in signals:
             score += 4
             reasons.append("staff+")
         else:
+            # Soft: a staff seeker may still want a strong senior role.
             score -= 2
-            hard_fail = True
-    elif sen_prefs and seniority not in sen_prefs:
-        hard_fail = True
+            reasons.append("staff-mismatch")
     elif sen_prefs and seniority in sen_prefs:
         score += 3
         reasons.append("seniority")
+    elif sen_prefs and "unmarked" in signals:
+        # Level-ambiguous title ("Product Manager", "Software Engineer"):
+        # neither bonus nor penalty — never exclude on seniority alone.
+        reasons.append("seniority-ambiguous")
+    elif sen_prefs:
+        score -= 2
+        reasons.append("seniority-mismatch")
 
     track_prefs = [str(t).lower() for t in (prefs.get("track") or [])]
     track = str(classified.get("track") or "ic")

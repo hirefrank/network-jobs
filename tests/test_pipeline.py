@@ -665,6 +665,88 @@ class ManagerSeniorityTests(unittest.TestCase):
         self.assertEqual(out["seniority"], "mid")
 
 
+class SenioritySoftMatchTests(unittest.TestCase):
+    def test_plain_pm_title_is_unmarked(self):
+        from network_jobs.classify import classify_job
+
+        out = classify_job({"title": "Product Manager, Claude Science", "department": "Product"})
+        self.assertEqual(out["seniority"], "mid")
+        self.assertIn("unmarked", out["senioritySignals"])
+
+    def test_junior_signal_detected(self):
+        from network_jobs.classify import classify_job
+
+        out = classify_job({"title": "Associate Product Manager", "department": "Product"})
+        self.assertIn("junior", out["senioritySignals"])
+        self.assertEqual(out["seniority"], "mid")
+
+    def test_generic_manager_not_promoted(self):
+        from network_jobs.classify import classify_job
+
+        # "Escalations Manager" is a low-confidence generic manager title —
+        # must not be promoted to senior the way "Engineering Manager" is.
+        out = classify_job({"title": "Executive Escalations Manager", "department": "Support"})
+        self.assertEqual(out["seniority"], "mid")
+        self.assertNotIn("manager", out["senioritySignals"])
+
+    def test_unmarked_pm_matches_senior_prefs(self):
+        prefs = {"seniority": ["senior"]}
+        job = {"title": "Product Manager, Claude Science", "company": "Anthropic",
+               "location": "New York, NY"}
+        scored = score_job(job, prefs)
+        self.assertTrue(scored["matched"])
+        self.assertIn("seniority-ambiguous", scored["matchReasons"])
+
+    def test_seniority_mismatch_is_soft_penalty(self):
+        # Senior-titled role against mid prefs: still matches, just scores lower.
+        prefs = {"seniority": ["mid"]}
+        job = {"title": "Senior Product Manager", "company": "Anthropic",
+               "location": "New York, NY"}
+        scored = score_job(job, prefs)
+        self.assertTrue(scored["matched"])
+        self.assertIn("seniority-mismatch", scored["matchReasons"])
+
+    def test_junior_signal_hard_fails_senior_prefs(self):
+        prefs = {"seniority": ["senior"]}
+        job = {"title": "Associate Product Manager", "company": "Anthropic",
+               "location": "New York, NY"}
+        scored = score_job(job, prefs)
+        self.assertFalse(scored["matched"])
+        self.assertIn("junior-mismatch", scored["matchReasons"])
+
+    def test_staff_pref_mismatch_is_soft(self):
+        prefs = {"seniority": ["staff+"]}
+        job = {"title": "Senior Product Manager", "company": "Anthropic",
+               "location": "New York, NY"}
+        scored = score_job(job, prefs)
+        self.assertTrue(scored["matched"])
+        self.assertIn("staff-mismatch", scored["matchReasons"])
+
+    def test_shards_load_both_seniorities(self):
+        from network_jobs.rank import _iter_shards
+
+        tmp = Path(tempfile.mkdtemp(prefix="nj-sen-"))
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        corpus = tmp / "corpus"
+        corpus.mkdir()
+        manifest = {"categories": {"product": {"byLocation": {"nyc": {
+            "senior": {"file": "product-nyc-senior.json"},
+            "mid": {"file": "product-nyc-mid.json"},
+        }}}}}
+        (corpus / "manifest.json").write_text(json.dumps(manifest))
+        (corpus / "product-nyc-senior.json").write_text(json.dumps(
+            [{"title": "Senior PM", "company": "Acme", "fingerprint": "s1"}]))
+        (corpus / "product-nyc-mid.json").write_text(json.dumps(
+            [{"title": "Product Manager", "company": "Acme", "fingerprint": "m1"}]))
+        prefs = {"seniority": ["senior"], "categories": ["product"],
+                 "locationBuckets": ["nyc"]}
+        jobs, _ = _iter_shards(corpus, prefs, None)
+        titles = {j["title"] for j in jobs}
+        self.assertIn("Senior PM", titles)
+        self.assertIn("Product Manager", titles)
+
+
+
 class RecencyStaleTests(unittest.TestCase):
     def _corpus(self, jobs):
         tmp = Path(tempfile.mkdtemp(prefix="nj-stale-"))

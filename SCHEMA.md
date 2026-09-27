@@ -90,7 +90,7 @@ Search and discovery defaults from a **résumé-grounded** agent interview (not 
 | `locations` | Free-text places the user cares about (display / soft filter) |
 | `onsiteLocations` | Where onsite/hybrid is acceptable. **Required whenever `workModes` includes `hybrid` or `onsite`.** Never treat “open to onsite” as every office worldwide — scope it to these places (and matching `locationBuckets`). |
 | `categories` | Preferred role categories (same 15 as corpus) |
-| `seniority` | `senior` and/or `mid`; extra signals `staff+` / `intern` are honored when present |
+| `seniority` | `senior` and/or `mid` — a soft scoring signal, never a veto (match +3, mismatch −2, unmarked titles neutral); only `intern`/`junior` signals hard-fail |
 | `track` | `ic` \| `manager` \| `either` (individual contributor vs people manager) |
 | `companyStages` | Free-form tags the user cares about (e.g. `seed`, `series-a`, `growth`, `public`) |
 | `companySizes` | Optional size bands the user stated (free-form) |
@@ -308,10 +308,10 @@ Keep `senior` / `mid` shards as the fast path.
 
 | Bucket | Title signals |
 |--------|----------------|
-| `senior` | Senior, Staff, Principal, Lead, Director, VP, Head of, **people-manager titles** (`Engineering Manager`, `Director of Engineering`, …) |
-| `mid` | Everything else (including internships) |
+| `senior` | Senior, Staff, Principal, Lead, Director, VP, Head of, **high-confidence people-manager titles** (`Engineering Manager`, `Director of Engineering`, …) |
+| `mid` | Everything else (including internships, junior titles, and level-ambiguous titles) |
 
-Additional **`senioritySignals`** on the job object: `intern`, `staff+`, `manager`. Prefs or queries can filter those without new shard files. Interns stay in `mid`; Staff/Principal stay in `senior` plus `staff+`. People-manager titles (track `manager`) land in `senior` with the `manager` signal — IC-flavored "manager" titles (`Account Manager`, `Program Manager`) stay on the `ic` track and are not promoted.
+Additional **`senioritySignals`** on the job object: `intern`, `junior`, `unmarked`, `staff+`, `manager`. Seniority is a soft scoring signal, never an exclusion: a seniority match scores +3, a level-ambiguous title (no seniority markers, e.g. plain "Product Manager") scores neutral, any other mismatch scores −2. Only positive junior signals (`intern`, `junior`) hard-fail against non-junior prefs. Interns stay in `mid`; Staff/Principal stay in `senior` plus `staff+`. High-confidence people-manager titles (track `manager`, confidence `high`) land in `senior` with the `manager` signal — generic "X Manager" titles (`Escalations Manager`, `Sourcing Manager`) and IC-flavored "manager" titles (`Account Manager`, `Program Manager`) stay `mid` and are not promoted.
 
 `track` is persisted on the job (`ic` | `manager`) by the classifier.
 

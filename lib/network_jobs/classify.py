@@ -86,6 +86,7 @@ SENIOR_RE = re.compile(
     r"vice president|head of|chief )\b",
     re.I,
 )
+JUNIOR_RE = re.compile(r"\b(junior|associate|entry[-\s]?level)\b", re.I)
 
 
 def _match_table(text: str, table: list[tuple[str, str]]) -> tuple[str | None, str | None]:
@@ -131,6 +132,13 @@ def classify_seniority(title: str) -> tuple[str, list[str]]:
         return "senior", signals
     if SENIOR_RE.search(title or ""):
         return "senior", signals
+    if JUNIOR_RE.search(title or ""):
+        signals.append("junior")
+        return "mid", signals
+    # No seniority markers at all ("Product Manager", "Software Engineer"):
+    # level-ambiguous, not "mid". Scoring treats unmarked titles as neutral
+    # so plain-titled roles are never excluded on seniority alone.
+    signals.append("unmarked")
     return "mid", signals
 
 
@@ -168,9 +176,17 @@ def classify_job(job: dict[str, Any], company: str | None = None) -> dict[str, A
     category, cat_conf, cat_amb = classify_category(title, department)
     track, track_conf, track_amb = classify_track(title, department)
     seniority, signals = classify_seniority(title)
-    if track == "manager" and seniority == "mid" and "intern" not in signals:
-        # People-manager titles are senior-level roles ("Engineering Manager"
-        # was landing in mid and hard-failing users with seniority=["senior"]).
+    if (
+        track == "manager"
+        and track_conf == "high"
+        and seniority == "mid"
+        and "intern" not in signals
+    ):
+        # High-confidence people-manager titles ("Engineering Manager",
+        # "Director of Engineering") are senior-level roles. Generic
+        # "X Manager" titles (track confidence low, e.g. "Escalations
+        # Manager", "Sourcing Manager") are not promoted — "Manager" there
+        # usually names a domain, not a team.
         # IC-flavored managers (Account/Program/Project Manager) already map to
         # the ic track above, so this only promotes true people managers.
         seniority, signals = "senior", [*signals, "manager"]
