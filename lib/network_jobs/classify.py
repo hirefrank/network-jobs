@@ -18,6 +18,28 @@ CATEGORIES = (
     "it-security", "retail", "other",
 )
 
+# Adjacent categories that are close enough to count as a soft match when a
+# seeker prefers one category but the job is classified as another. Used by
+# prefs.score_job: affinity adds a small bonus without the exact-category
+# points, and — unlike an unrelated category — never hard-fails.
+CATEGORY_AFFINITY: dict[str, frozenset[str]] = {
+    "ai-ml": frozenset({"engineering", "data"}),
+    "engineering": frozenset({"ai-ml", "data", "it-security", "product"}),
+    "data": frozenset({"ai-ml", "engineering", "product"}),
+    "product": frozenset({"engineering", "data", "design", "operations"}),
+    "design": frozenset({"product", "engineering", "marketing"}),
+    "sales": frozenset({"customer-success", "marketing"}),
+    "marketing": frozenset({"sales", "design", "product"}),
+    "customer-success": frozenset({"sales", "operations"}),
+    "operations": frozenset({"product", "customer-success", "finance"}),
+    "finance": frozenset({"operations", "legal"}),
+    "people": frozenset({"operations"}),
+    "legal": frozenset({"finance", "operations"}),
+    "it-security": frozenset({"engineering", "operations"}),
+    "retail": frozenset({"sales", "customer-success"}),
+    "other": frozenset(),
+}
+
 # Longer / more specific phrases first.
 TITLE_CATEGORY_PATTERNS: list[tuple[str, str]] = [
     (r"\b(machine learning|ml engineer|ml ops|mlops|deep learning|artificial intelligence|\bai[ -]?ml\b|llm |research scientist)\b", "ai-ml"),

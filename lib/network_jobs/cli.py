@@ -112,6 +112,7 @@ def cmd_rank(args: argparse.Namespace) -> int:
         k=args.k,
         query=args.query,
         include_stale=getattr(args, "include_stale", False),
+        company_cap=getattr(args, "company_cap", 3),
     )
     data = data_home(args.data)
     search_dir = data / "search"
@@ -167,6 +168,7 @@ def cmd_search(args: argparse.Namespace) -> int:
         k=args.k,
         query=args.query or None,
         include_stale=getattr(args, "include_stale", False),
+        company_cap=getattr(args, "company_cap", 3),
     )
     if getattr(args, "json", False):
         _dump(result, args.verbose)
@@ -196,6 +198,82 @@ def cmd_search(args: argparse.Namespace) -> int:
         url = job.get("url") or job.get("jdUrl") or ""
         if url:
             print(f"  {url}")
+    return 0
+
+
+#: Fixed synthetic jobs for the `demo` command. Obviously fake companies —
+#: never real postings, never PII. Chosen to exercise the pipeline:
+#: exact-category hits, category affinity (ai-ml/data vs engineering),
+#: a hard-fail (sales), and four Acme roles to show the company cap.
+DEMO_JOBS: list[dict[str, Any]] = [
+    {"title": "Senior Backend Engineer", "company": "Acme Corp",
+     "location": "New York, NY", "department": "Engineering",
+     "salary": {"min": 180000, "max": 220000}, "postedAt": "2026-09-20"},
+    {"title": "Frontend Engineer", "company": "Acme Corp",
+     "location": "New York, NY", "department": "Engineering",
+     "postedAt": "2026-09-22"},
+    {"title": "DevOps Engineer", "company": "Acme Corp",
+     "location": "Remote", "department": "Engineering", "postedAt": "2026-09-25"},
+    {"title": "Site Reliability Engineer", "company": "Acme Corp",
+     "location": "Remote", "department": "Engineering", "postedAt": "2026-09-26"},
+    {"title": "Product Manager", "company": "Globex",
+     "location": "San Francisco, CA", "department": "Product",
+     "postedAt": "2026-09-18"},
+    {"title": "Machine Learning Engineer", "company": "Initech",
+     "location": "Remote", "department": "AI", "postedAt": "2026-09-24"},
+    {"title": "Data Analyst", "company": "Hooli",
+     "location": "Austin, TX", "department": "Data", "postedAt": "2026-09-19"},
+    {"title": "Account Executive", "company": "Umbrella",
+     "location": "Chicago, IL", "department": "Sales", "postedAt": "2026-09-21"},
+]
+
+
+def cmd_demo(args: argparse.Namespace) -> int:
+    """Rank a fixed synthetic job set: no network, no disk writes, no PII."""
+    from datetime import date as _date
+
+    from .prefs import score_job
+
+    data = data_home(args.data)
+    prefs = _load_json(data / "preferences.json", {})
+    if not isinstance(prefs, dict):
+        prefs = {}
+    if not prefs.get("categories"):
+        prefs = {**prefs, "categories": ["engineering", "product"]}
+    scored = [score_job(dict(j), prefs) for j in DEMO_JOBS]
+    # Demo uses the triage path's stricter bar: drop vetoes and hard-fails
+    # (e.g. the sales role against engineering prefs) so the shortlist
+    # shows what a real seeker would see.
+    scored = [j for j in scored if j.get("matched") and not j.get("veto")]
+    scored.sort(key=lambda j: -float(j.get("matchScore") or 0))
+    k_eff = max(0, min(int(args.k), len(scored)))
+    top: list[dict[str, Any]] = []
+    cap = max(0, int(getattr(args, "company_cap", 3) or 0))
+    counts: dict[str, int] = {}
+    for job in scored:
+        if len(top) >= k_eff:
+            break
+        if cap:
+            key = str(job.get("company") or "").strip().lower()
+            if counts.get(key, 0) >= cap:
+                continue
+            counts[key] = counts.get(key, 0) + 1
+        top.append(job)
+    print(f"demo: {len(top)} of {len(scored)} synthetic jobs "
+          f"(prefs categories: {', '.join(prefs.get('categories', []))})")
+    today = _date.today()
+    for job in top:
+        bits = [str(job.get("title") or "untitled"), str(job.get("company") or "")]
+        salary = _fmt_salary(job.get("salary"))
+        if salary:
+            bits.append(salary)
+        age = _fmt_age_days(posting_age_days(job.get("postedAt"), today))
+        if age:
+            bits.append(age)
+        print("• " + " — ".join(bits))
+        reasons = job.get("matchReasons") or []
+        if reasons:
+            print(f"  [{', '.join(str(r) for r in reasons)}]")
     return 0
 
 
@@ -363,6 +441,9 @@ def cmd_paginate(args: argparse.Namespace) -> int:
     if args.input:
         payload = _load_json(Path(args.input), None)
         url = url or ""
+    if args.input and args.url:
+        print("warning: both --input and --url given; fetching --url, --input ignored",
+              file=sys.stderr)
     if not url and payload is None:
         print("paginate requires --url or --input", file=sys.stderr)
         return 1
@@ -559,6 +640,8 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("-k", type=int, default=DEFAULT_K)
     r.add_argument("--query", default="")
     r.add_argument("--out")
+    r.add_argument("--company-cap", type=int, default=3,
+                   help="max jobs per company in the top-K shortlist (0 = no cap)")
     r.add_argument("--include-stale", action="store_true",
                    help="include stale postings (hidden by default)")
     r.set_defaults(func=cmd_rank)
@@ -567,11 +650,20 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--query", default="")
     s.add_argument("-k", type=int, default=DEFAULT_K)
     s.add_argument("--data")
+    s.add_argument("--company-cap", type=int, default=3,
+                   help="max jobs per company in the top-K shortlist (0 = no cap)")
     s.add_argument("--include-stale", action="store_true",
                    help="include stale postings (hidden by default)")
     s.add_argument("--json", action="store_true",
                    help="print the ranked payload instead of a list")
     s.set_defaults(func=cmd_search)
+
+    d = sub.add_parser("demo", help="rank a fixed synthetic job set (no network, no disk writes)")
+    d.add_argument("--data")
+    d.add_argument("-k", type=int, default=8)
+    d.add_argument("--company-cap", type=int, default=3,
+                   help="max jobs per company in the demo shortlist (0 = no cap)")
+    d.set_defaults(func=cmd_demo)
 
     co = sub.add_parser("companies", help="list the company graph")
     co.add_argument("--data")

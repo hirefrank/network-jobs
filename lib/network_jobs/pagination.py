@@ -14,7 +14,9 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 from .inventory import upsert_inventory, write_summary_json
+from .dates import normalize_date_iso
 from .fingerprint import fingerprint
+from .salary import parse_salary
 from .text import collapse_ws
 
 LIST_KEYS = (
@@ -109,6 +111,24 @@ def _location_from(raw: Any) -> tuple[str, list[Any]]:
     return collapse_ws(str(raw)), [collapse_ws(str(raw))]
 
 
+def _normalize_salary_posted(listing: dict[str, Any]) -> None:
+    """Parse string salaries and canonicalize postedAt, in place.
+
+    postedAt becomes YYYY-MM-DD when the ATS format parses (raw kept when
+    not); a string salary becomes the parsed dict when it parses. Anything
+    unparseable is left untouched — never destroy data here.
+    """
+    posted = listing.get("postedAt")
+    if posted:
+        listing["postedAt"] = normalize_date_iso(posted) or str(posted)
+    salary = listing.get("salary")
+    if isinstance(salary, dict) or not isinstance(salary, str) or not salary.strip():
+        return
+    parsed = parse_salary(salary)
+    if parsed:
+        listing["salary"] = parsed
+
+
 def normalize_listing(raw: Any, source_url: str = "") -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         return None
@@ -116,6 +136,7 @@ def normalize_listing(raw: Any, source_url: str = "") -> dict[str, Any] | None:
     if raw.get("title") and (raw.get("url") or raw.get("location")) and "matchScore" not in raw:
         listing = dict(raw)
         listing.setdefault("sourceUrl", source_url)
+        _normalize_salary_posted(listing)
         return listing
     title = _first(raw, TITLE_KEYS)
     if not title:
@@ -157,6 +178,11 @@ def normalize_listing(raw: Any, source_url: str = "") -> dict[str, Any] | None:
         listing["postedAt"] = str(posted)
     if isinstance(salary, dict):
         listing["salary"] = salary
+    elif isinstance(salary, str) and salary.strip():
+        parsed = parse_salary(salary)
+        if parsed:
+            listing["salary"] = parsed
+    _normalize_salary_posted(listing)
     if not listing["url"] and not listing["location"] and not listing.get("externalId"):
         return None
     return listing

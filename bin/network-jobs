@@ -29,7 +29,7 @@ Commands:
   import <zip-or-csv> [--min-count N]
       Parse LinkedIn Connections into the local company graph
 
-  search [--query "..."] [-k N] [--include-stale] [--json]
+  search [--query "..."] [-k N] [--company-cap N] [--include-stale] [--json]
       Rank the corpus against your prefs and print matching jobs
 
   companies [--sort connections|name|crawl] [--json]
@@ -37,6 +37,9 @@ Commands:
 
   refresh [--company NAME] [--limit N] [--json]
       Re-crawl known listings endpoints (oldest first), stage new matches
+
+  demo [-k N] [--company-cap N]
+      Rank a fixed synthetic job set (no network, no disk writes)
 
   profile import <resume-file>
       Store résumé under ~/.network-jobs/resume/ (feeds profile + interview)
@@ -171,6 +174,7 @@ steps like rank-intros.
 Options:
   --query "..."    Boost jobs matching these terms (also narrows shards)
   -k N            Show the top N matches (default: 25)
+  --company-cap N Max jobs per company in the shortlist (default: 3, 0 = no cap)
   --include-stale Also show stale postings (posted >90d ago, hidden by default)
   --json          Print the ranked.json payload instead of a human list
   --help, -h      Show this help
@@ -178,6 +182,25 @@ Options:
 Examples:
   network-jobs search
   network-jobs search --query "staff product engineer" -k 10
+EOF
+}
+
+usage_demo() {
+  cat <<'EOF'
+Usage: network-jobs demo [-k N] [--company-cap N]
+
+Rank a fixed set of synthetic jobs (fake companies, no PII) against your
+preferences.json — or engineering/product defaults when none is set. No
+network, no disk writes: a quick end-to-end check of the scoring pipeline.
+
+Options:
+  -k N            Show the top N demo jobs (default: 8)
+  --company-cap N Max jobs per company in the shortlist (default: 3, 0 = no cap)
+  --help, -h      Show this help
+
+Examples:
+  network-jobs demo
+  network-jobs demo --company-cap 0
 EOF
 }
 
@@ -336,6 +359,7 @@ cmd_help() {
     doctor) usage_doctor ;;
     import) usage_import ;;
     search) usage_search ;;
+    demo) usage_demo ;;
     companies) usage_companies ;;
     refresh) usage_refresh ;;
     profile) usage_profile ;;
@@ -994,6 +1018,14 @@ cmd_search() {
   _lib_cli search "$@"
 }
 
+cmd_demo() {
+  if network_jobs_want_help "$@"; then
+    usage_demo
+    return 0
+  fi
+  _lib_cli demo "$@"
+}
+
 cmd_companies() {
   if network_jobs_want_help "$@"; then
     usage_companies
@@ -1025,6 +1057,7 @@ case "$cmd" in
   doctor) cmd_doctor "$@" ;;
   import) cmd_import "$@" ;;
   search) cmd_search "$@" ;;
+  demo) cmd_demo "$@" ;;
   companies) cmd_companies "$@" ;;
   refresh) cmd_refresh "$@" ;;
   profile) cmd_profile "$@" ;;

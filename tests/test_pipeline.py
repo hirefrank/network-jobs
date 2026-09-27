@@ -863,5 +863,268 @@ class CompaniesRefreshTests(unittest.TestCase):
         self.assertEqual([r["slug"] for r in results], ["acme"])
 
 
+class LocationBucketRound3Tests(unittest.TestCase):
+    def test_new_metro_buckets(self):
+        from network_jobs.locations import location_buckets_for
+
+        cases = {
+            "Los Angeles, CA": "la",
+            "Santa Monica, CA": "la",
+            "Seattle, WA": "seattle",
+            "Bellevue, WA": "seattle",
+            "Austin, TX": "austin",
+            "Boston, MA": "boston",
+            "Cambridge, MA": "boston",
+            "Chicago, IL": "chicago",
+            "Denver, CO": "denver",
+            "Boulder, CO": "denver",
+            "Washington, DC": "dc",
+            "Arlington, VA": "dc",
+        }
+        for raw, want in cases.items():
+            with self.subTest(raw=raw):
+                self.assertEqual(location_buckets_for({"location": raw})[0], want)
+
+    def test_atlanta_is_not_la(self):
+        from network_jobs.locations import location_buckets_for
+
+        # Short aliases like "la" must not substring-match "Atlanta".
+        self.assertEqual(location_buckets_for({"location": "Atlanta, GA"})[0], "other")
+        self.assertEqual(location_buckets_for({"location": "Philadelphia, PA"})[0], "other")
+
+    def test_primary_bucket_order(self):
+        from network_jobs.locations import primary_location_bucket
+
+        self.assertEqual(
+            primary_location_bucket({"location": "Austin, TX or Remote"}), "austin"
+        )
+        self.assertEqual(primary_location_bucket({"location": "Remote"}), "remote")
+
+
+class CategoryAffinityTests(unittest.TestCase):
+    def test_affinity_soft_match_no_hard_fail(self):
+        prefs = {"categories": ["engineering"]}
+        job = {"title": "Machine Learning Engineer", "company": "Initech",
+               "location": "Remote"}
+        scored = score_job(job, prefs)
+        self.assertTrue(scored["matched"])
+        self.assertIn("category-affinity", scored["matchReasons"])
+        self.assertNotIn("category", scored["matchReasons"])
+
+    def test_exact_category_still_wins(self):
+        prefs = {"categories": ["engineering"]}
+        job = {"title": "Senior Backend Engineer", "company": "Acme",
+               "location": "Remote"}
+        scored = score_job(job, prefs)
+        self.assertIn("category", scored["matchReasons"])
+        self.assertGreaterEqual(scored["matchScore"], 5)
+
+    def test_unrelated_category_still_hard_fails(self):
+        prefs = {"categories": ["engineering"]}
+        job = {"title": "Account Executive", "company": "Umbrella",
+               "location": "Chicago, IL"}
+        scored = score_job(job, prefs)
+        self.assertFalse(scored["matched"])
+
+
+class CompanyCapTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="nj-cap-"))
+        self.addCleanup(lambda: shutil.rmtree(self.tmp, ignore_errors=True))
+        corpus = self.tmp / "corpus"
+        corpus.mkdir()
+        jobs = [
+            {
+                "title": f"Backend Engineer {i}",
+                "company": "Acme Corp",
+                "department": "Engineering",
+                "location": "Remote",
+                "lastSeen": "2026-09-19",
+                "url": f"https://example.com/jobs/{i}",
+            }
+            for i in range(5)
+        ]
+        (corpus / "jobs-all.json").write_text(json.dumps(jobs) + "\n")
+        self.prefs = {"categories": ["engineering"]}
+
+    def test_cap_limits_single_company(self):
+        result = rank_corpus(data_dir=self.tmp, k=10, today="2026-09-20",
+                             prefs=self.prefs, company_cap=3)
+        self.assertEqual(len(result["jobs"]), 3)
+        self.assertEqual(result["showing"], "3 of 5")
+
+    def test_cap_zero_disables(self):
+        result = rank_corpus(data_dir=self.tmp, k=10, today="2026-09-20",
+                             prefs=self.prefs, company_cap=0)
+        self.assertEqual(len(result["jobs"]), 5)
+
+
+class SalaryParseTests(unittest.TestCase):
+    def test_range(self):
+        from network_jobs.salary import parse_salary
+
+        self.assertEqual(parse_salary("$150k–$180k")["min"], 150000)
+        self.assertEqual(parse_salary("$150k–$180k")["max"], 180000)
+
+    def test_up_to(self):
+        from network_jobs.salary import parse_salary
+
+        parsed = parse_salary("up to $200k")
+        self.assertEqual(parsed["max"], 200000)
+
+    def test_hourly_flagged_not_annualized(self):
+        from network_jobs.salary import parse_salary
+
+        parsed = parse_salary("$75/hr")
+        self.assertEqual(parsed["unit"], "hourly")
+        self.assertEqual(parsed["min"], 75)
+
+    def test_garbage_returns_none(self):
+        from network_jobs.salary import parse_salary
+
+        self.assertIsNone(parse_salary("competitive pay"))
+        self.assertIsNone(parse_salary(None))
+
+
+class PaginationNormalizeTests(unittest.TestCase):
+    def test_string_salary_parsed(self):
+        from network_jobs.pagination import normalize_listing
+
+        job = normalize_listing({"title": "Eng", "location": "Remote",
+                                 "salary": "$150k–$180k"})
+        self.assertIsNotNone(job)
+        assert job is not None
+        self.assertEqual(job["salary"]["min"], 150000)
+        self.assertEqual(job["salary"]["max"], 180000)
+
+    def test_hourly_salary_kept_hourly(self):
+        from network_jobs.pagination import normalize_listing
+
+        job = normalize_listing({"title": "Eng", "location": "Remote",
+                                 "salary": "$90 per hour"})
+        assert job is not None
+        self.assertEqual(job["salary"]["unit"], "hourly")
+
+    def test_posted_at_iso_when_parseable(self):
+        from network_jobs.pagination import normalize_listing
+
+        job = normalize_listing({"title": "Eng", "location": "Remote",
+                                 "postedAt": "09/18/2026"})
+        assert job is not None
+        self.assertEqual(job["postedAt"], "2026-09-18")
+
+    def test_posted_at_raw_when_unparseable(self):
+        from network_jobs.pagination import normalize_listing
+
+        job = normalize_listing({"title": "Eng", "location": "Remote",
+                                 "postedAt": "sometime last week"})
+        assert job is not None
+        self.assertEqual(job["postedAt"], "sometime last week")
+
+    def test_input_url_conflict_warns(self):
+        import argparse
+        import io
+        from contextlib import redirect_stderr
+
+        import network_jobs.cli as cli_mod
+
+        tmp = Path(tempfile.mkdtemp(prefix="nj-pag-"))
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        infile = tmp / "in.json"
+        infile.write_text(json.dumps([{"title": "Eng", "location": "Remote"}]))
+        args = argparse.Namespace(url="http://example.com/jobs", input=str(infile),
+                                  triage_dir=str(tmp), company="", max_pages=1,
+                                  max_listings=10, verbose=False)
+        calls = []
+        real_paginate = cli_mod.paginate
+        cli_mod.paginate = lambda *a, **k: calls.append((a, k)) or {
+            "listings": [], "pagination": {}, "fetchLog": []}
+        try:
+            err = io.StringIO()
+            with redirect_stderr(err):
+                cli_mod.cmd_paginate(args)
+            self.assertIn("--input", err.getvalue())
+            self.assertIn("--url", err.getvalue())
+        finally:
+            cli_mod.paginate = real_paginate
+
+
+class CorpusMergeTests(unittest.TestCase):
+    def test_inherits_last_seen_when_incoming_lacks_it(self):
+        from network_jobs.corpus import merge_jobs
+
+        existing = [{"title": "Eng", "company": "Acme", "location": "Remote",
+                     "fingerprint": "fp:acme:abc123",
+                     "firstSeen": "2026-09-01", "lastSeen": "2026-09-10",
+                     "postedAt": "2026-08-28"}]
+        incoming = [{"title": "Eng", "company": "Acme", "location": "Remote",
+                     "fingerprint": "fp:acme:abc123"}]
+        merged = merge_jobs(existing, incoming)
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0]["lastSeen"], "2026-09-10")
+        self.assertEqual(merged[0]["postedAt"], "2026-08-28")
+        self.assertEqual(merged[0]["firstSeen"], "2026-09-01")
+
+
+class FingerprintPlaceholderTests(unittest.TestCase):
+    def test_placeholder_ats_ids_ignored(self):
+        from network_jobs.fingerprint import ats_id, fingerprint
+
+        for placeholder in ("null", "N/A", "undefined", "TBD", "-", "unknown"):
+            with self.subTest(placeholder=placeholder):
+                self.assertIsNone(ats_id({"atsId": placeholder, "title": "x"}))
+
+    def test_distinct_jobs_do_not_collide_on_placeholder(self):
+        from network_jobs.fingerprint import fingerprint
+
+        a = {"title": "Backend Engineer", "company": "Acme", "location": "NYC",
+             "atsId": "null"}
+        b = {"title": "Frontend Engineer", "company": "Acme", "location": "NYC",
+             "atsId": "null"}
+        self.assertNotEqual(fingerprint(a), fingerprint(b))
+        self.assertTrue(fingerprint(a).startswith("fp:"))
+
+
+class IntrosConstantTests(unittest.TestCase):
+    def test_unknown_position_score_named(self):
+        from network_jobs.intros import UNKNOWN_POSITION_SCORE, _score_forwarder
+
+        self.assertEqual(UNKNOWN_POSITION_SCORE, 0.5)
+        score = _score_forwarder({"title": "Eng"}, {"name": "Pat"})
+        self.assertEqual(score, UNKNOWN_POSITION_SCORE)
+
+
+class DatesModuleTests(unittest.TestCase):
+    def test_parse_date_flexible(self):
+        from datetime import date
+
+        from network_jobs.dates import normalize_date_iso, parse_date_flexible
+
+        self.assertEqual(parse_date_flexible("2026-09-18T10:00:00Z"), date(2026, 9, 18))
+        self.assertEqual(parse_date_flexible("09/18/2026"), date(2026, 9, 18))
+        self.assertIsNone(parse_date_flexible("sometime last week"))
+        self.assertIsNone(parse_date_flexible(None))
+        self.assertEqual(normalize_date_iso("Sep 18, 2026"), "2026-09-18")
+        self.assertIsNone(normalize_date_iso("garbage"))
+
+
+class DemoCommandTests(unittest.TestCase):
+    def test_demo_runs_offline(self):
+        import argparse
+        import io
+        from contextlib import redirect_stdout
+
+        import network_jobs.cli as cli_mod
+
+        args = argparse.Namespace(data="/tmp/nj-demo-nope", k=8, company_cap=3)
+        out = io.StringIO()
+        with redirect_stdout(out):
+            rc = cli_mod.cmd_demo(args)
+        self.assertEqual(rc, 0)
+        text = out.getvalue()
+        self.assertIn("demo:", text)
+        self.assertIn("category-affinity", text)
+
+
 if __name__ == "__main__":
     unittest.main()
