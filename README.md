@@ -122,7 +122,8 @@ Skills self-describe for routing. `network-jobs routing` prints an optional snip
 - **Provenance-style scraping:** orchestration + optional recipes — no ATS adapter matrix.
 - **Shared data:** one `~/.network-jobs/` for every agent on the machine.
 - **Symlink installs:** one suite copy; `update` re-points agent skill links.
-- **Prefs-aware discovery/search:** former employers and other interview fields shape defaults; the user’s query always wins.
+- **Prefs-aware discovery/search:** after extract, `match-prefs.py` writes `index/matches.json` (confirm matches by default; ingest all / department slice still available). Search runs `rank-jobs.py` and reports `Showing K of N` instead of dumping shards.
+- **Crawl budget:** listing-set hash + `lastCrawl` on the company; skip unchanged boards; paginate with page/browser caps; ingest is a fingerprint delta. Expiry still requires `pagination.complete`.
 
 ## Fixtures
 
@@ -130,6 +131,7 @@ Skills self-describe for routing. `network-jobs routing` prints an optional snip
 export NETWORK_JOBS_HOME=/tmp/nj-test
 npx --yes 'github:hirefrank/network-jobs#main' setup --agent auto --no-browser
 npx --yes 'github:hirefrank/network-jobs#main' import ./fixtures/Connections.csv
+python3 tests/test_pipeline.py   # prefs, ranker, pagination, fingerprint, classifier, crawl, intros
 ```
 
 ## Decommissioning the old Workers app

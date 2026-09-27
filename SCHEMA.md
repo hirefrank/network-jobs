@@ -25,13 +25,19 @@ Default: `~/.network-jobs/` (override with `NETWORK_JOBS_HOME`).
 │   └── careers-<slug>-<YYYY-MM-DD>/
 │       ├── INVENTORY.md
 │       ├── index/
-│       │   └── listings.json
+│       │   ├── listings.json
+│       │   ├── matches.json          # prefs-scored shortlist
+│       │   ├── pagination.json       # pages / complete / truncated
+│       │   └── summary.json
 │       └── fetch-log/
 │           └── <timestamp>-<label>.json
 ├── corpus/
 │   ├── manifest.json
 │   ├── <category>.json
 │   └── <category>-<loc>-<seniority>.json
+├── search/
+│   ├── ranked.json                   # top-K from local ranker
+│   └── intros.json                   # 1–2 roles + 1–2 forwarders
 └── logs/
     └── setup.log
 ```
@@ -84,7 +90,7 @@ Search and discovery defaults from a **résumé-grounded** agent interview (not 
 | `locations` | Free-text places the user cares about (display / soft filter) |
 | `onsiteLocations` | Where onsite/hybrid is acceptable. **Required whenever `workModes` includes `hybrid` or `onsite`.** Never treat “open to onsite” as every office worldwide — scope it to these places (and matching `locationBuckets`). |
 | `categories` | Preferred role categories (same 15 as corpus) |
-| `seniority` | `senior` and/or `mid` |
+| `seniority` | `senior` and/or `mid`; extra signals `staff+` / `intern` are honored when present |
 | `track` | `ic` \| `manager` \| `either` (individual contributor vs people manager) |
 | `companyStages` | Free-form tags the user cares about (e.g. `seed`, `series-a`, `growth`, `public`) |
 | `companySizes` | Optional size bands the user stated (free-form) |
@@ -142,7 +148,10 @@ Aggregated company graph (connection counts + sample people):
     "connectionCount": 12,
     "people": [
       { "name": "Jane Doe", "position": "PM", "url": "https://www.linkedin.com/in/jane" }
-    ]
+    ],
+    "lastCrawl": "2026-09-16T02:00:00Z",
+    "listingSetHash": "a1b2c3d4e5f60789",
+    "lastPagination": { "pages": 4, "complete": true, "truncated": false }
   }
 ]
 ```
@@ -150,7 +159,8 @@ Aggregated company graph (connection counts + sample people):
 - `normalized` — lowercase, punctuation/suffix stripped (see import helper).
 - `slug` — filesystem-safe form of `normalized`.
 - `domain` — filled later during careers discovery when known.
-- `people` — up to 10 sample connections (not the full roster).
+- `people` — up to 10 sample connections (not the full roster). **Intro ranking joins `connections.json`**, not this sample.
+- `lastCrawl` / `listingSetHash` / `lastPagination` — crawl budget. If the listing-set hash matches, skip refresh/ingest (delta is empty). Stamp after a successful paginated extract. Caps: 15 API pages, 5 browser “load more” pages, 2000 listings.
 
 ## Triage (careers-discover output)
 
@@ -165,8 +175,10 @@ Raw extracted openings (pre-normalization):
   {
     "title": "Senior Backend Engineer",
     "location": "San Francisco, CA",
+    "locations": ["San Francisco, CA"],
     "url": "https://example.com/jobs/123",
     "department": "Infrastructure",
+    "externalId": "123",
     "salary": { "min": 180000, "max": 250000 },
     "postedAt": "2025-12-15T00:00:00Z",
     "sourceUrl": "https://example.com/careers",
@@ -175,11 +187,54 @@ Raw extracted openings (pre-normalization):
 ]
 ```
 
-Omit fields you did not observe. Never invent salary or posted dates.
+`locations` is optional (one posting, many offices). `externalId` is the ATS/board id when the JSON exposes one — used for fingerprinting, never invented.
+
+### index/pagination.json
+
+Written by `careers-discover/helpers/paginate-listings.py` when a jobs JSON/API is followed (page / cursor / offset). Cap `maxPages` (default 15). ATS-agnostic — no adapter matrix.
+
+```json
+{
+  "pages": 4,
+  "complete": true,
+  "truncated": false,
+  "scheme": "link",
+  "maxPages": 15
+}
+```
+
+Also copied into the INVENTORY `Pagination:` line. **`complete` is false** when the cap truncated the crawl or a next-page signal remained. Ingest must **not** expire unseen jobs unless `complete` is true.
+
+### index/matches.json
+
+Written by `careers-discover/helpers/match-prefs.py` after extract. Score listings against `preferences.json` (+ résumé keywords when present). **Confirm matches by default** at ingest time; the user can still say “ingest all” (`listings.json`) or a department slice.
+
+```json
+{
+  "nListings": 120,
+  "nMatches": 14,
+  "showing": "14 of 120 match prefs",
+  "departments": { "Product": 40, "Engineering": 80 },
+  "ingestDefault": "matches",
+  "jobs": [
+    {
+      "title": "Staff Product Manager, Growth",
+      "location": "New York, NY or Remote",
+      "url": "https://example.com/jobs/pm-2",
+      "department": "Product",
+      "matchScore": 15,
+      "matchReasons": ["remote", "onsiteLocations", "category", "seniority", "track"],
+      "matched": true
+    }
+  ]
+}
+```
 
 ### INVENTORY.md
 
 Required. Summarize: company, careers URL used, listing count, caveats, suggested next steps.
+
+Helpers append a `<!-- nj-summary -->` block with **N of M match prefs**, a department histogram, and (later) pagination. Do not dump the full board into chat — point at `matches.json`.
 
 ### fetch-log/
 
@@ -203,21 +258,31 @@ Verbatim capture of each fetch/browser snapshot **before** presenting results to
 ```json
 {
   "id": "stripe-senior-backend-engineer-123",
+  "fingerprint": "id:stripe:123",
   "title": "Senior Backend Engineer",
   "company": "Stripe",
   "companyDomain": "stripe.com",
   "department": "Developer Infrastructure",
   "category": "engineering",
   "location": "San Francisco, CA",
+  "locations": [{"raw": "San Francisco, CA", "city": "San Francisco", "region": "CA", "remote": false, "bucket": "sf"}],
   "locationBucket": "sf",
+  "locationBuckets": ["sf"],
   "seniority": "senior",
+  "track": "ic",
   "url": "https://stripe.com/jobs/123",
+  "externalId": "123",
+  "status": "open",
   "salary": { "min": 180000, "max": 250000 },
   "postedAt": "2025-12-15T00:00:00Z",
   "firstSeen": "2026-07-08",
   "lastSeen": "2026-07-08"
 }
 ```
+
+Identity is **`fingerprint`**, not URL: `id:{company}:{atsId}` when `externalId` is known, otherwise `fp:{company}:{sha1(title+locations)}`. Rebuild merges on fingerprint (incoming wins, `firstSeen` preserved). `status` is `open` | `closed`. Closed jobs stay in `jobs-all.json` but are omitted from searchable shards.
+
+**Expiry / close:** when ingesting a company, unseen open jobs for that company are marked `closed` **only if** triage `pagination.complete` is true. Incomplete crawls (truncated, cap hit, missing next page) must not expire anything.
 
 ### Categories (15)
 
@@ -232,12 +297,20 @@ Verbatim capture of each fetch/browser snapshot **before** presenting results to
 | `remote` | Fully remote (or remote-first) |
 | `other` | Everything else |
 
+Hybrid strings such as `New York, NY or Remote` set **`locationBuckets`: `["nyc","remote"]`** so the same job is written to both granular shards. Parsed `locations[].city` / `.region` are used with `onsiteLocations` (never “every office worldwide”).
+
 ### Seniority buckets
+
+Keep `senior` / `mid` shards as the fast path.
 
 | Bucket | Title signals |
 |--------|----------------|
 | `senior` | Senior, Staff, Principal, Lead, Director, VP, Head of |
-| `mid` | Everything else |
+| `mid` | Everything else (including internships) |
+
+Additional **`senioritySignals`** on the job object: `intern`, `staff+`. Prefs or queries can filter those without new shard files. Interns stay in `mid`; Staff/Principal stay in `senior` plus `staff+`.
+
+`track` is persisted on the job (`ic` | `manager`) by the classifier.
 
 ### manifest.json
 
@@ -273,9 +346,24 @@ Verbatim capture of each fetch/browser snapshot **before** presenting results to
 |-------|-------|--------|
 | `network-jobs-setup` | `resume/`, conversation | `profile.json`, `preferences.json` |
 | `network-jobs-import` | LinkedIn ZIP | `connections/`, `companies/` |
-| `careers-discover` | `companies/`, `preferences.json` (optional focus) | `triage/` |
-| `jobs-ingest` | `triage/` | `corpus/` |
-| `network-jobs` | `corpus/`, `profile.json`, `preferences.json` | — |
-| `intro-email-generator` | `profile.json`, `resume/text.md`, job context | — (draft in chat) |
+| `careers-discover` | `companies/`, `preferences.json` (optional focus) | `triage/` (`listings.json` + `matches.json`) |
+| `jobs-ingest` | `triage/` (`matches.json` by default, or all / department slice) | `corpus/` |
+| `network-jobs` | `corpus/`, `profile.json`, `preferences.json`, `resume/` | `search/ranked.json` |
+| `intro-email-generator` | `profile.json`, `resume/text.md`, `connections.json`, `search/intros.json` | `search/intros.json` |
 
 CLI helpers: `network-jobs profile import <file>` stores the résumé; `network-jobs profile show` prints profile + prefs + resume status.
+
+Search ranker: `skills/network-jobs/helpers/rank-jobs.py` writes `search/ranked.json` (`showing: "K of N"`). The search skill reads that file — it does not dump whole shards into context.
+
+### search/ranked.json
+
+```json
+{
+  "k": 25,
+  "n": 430,
+  "showing": "25 of 430",
+  "query": "senior pm nyc",
+  "shards": ["product-nyc-senior.json"],
+  "jobs": []
+}
+```

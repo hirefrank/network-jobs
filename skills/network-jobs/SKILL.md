@@ -34,6 +34,7 @@ cat "$DATA/corpus/manifest.json"
 | `corpus/manifest.json` | Category index + granular file map |
 | `corpus/{category}.json` | Full category list |
 | `corpus/{category}-{loc}-{seniority}.json` | Preferred granular shards |
+| `search/ranked.json` | Top-K from `helpers/rank-jobs.py` — read this, not whole shards |
 | `companies/companies.json` | Connection graph (for “who do I know?”) |
 
 **Location buckets:** `nyc`, `sf`, `remote`, `other`  
@@ -78,14 +79,16 @@ When the user does **not** specify location / mode / seniority / category / trac
    - `remote` only → prefer `locationBucket=remote`.
    - Includes `hybrid` / `onsite` → include city buckets that match `onsiteLocations` / `locations` / `locationBuckets` — **not** every non-remote job worldwide.
    - If `hybrid`/`onsite` is set but `onsiteLocations` is empty, ask once or fall back to `locations` / city `locationBuckets` only; never expand to global onsite.
-4. Honor `track` when filtering titles: `manager` → prefer Manager/Director/Head/EM/VP people-lead titles; `ic` → de-prioritize pure people-manager titles unless query asks; `either` → no track filter.
-5. Soft-filter with `locations`, `industries`, `companyStages`, `mustHaves`, `dealBreakers`, `notes`, `salaryMin` in judgment — do not invent salary on jobs that lack it.
-6. **Former employers:** read `formerEmployers` + `formerEmployerPolicy`.
+4. Honor `track` when filtering titles: `manager` → prefer Manager/Director/Head/EM/VP people-lead titles; `ic` → de-prioritize pure people-manager titles unless query asks; `either` → no track filter. Prefer the persisted `track` field on the job when present.
+5. Honor `senioritySignals`: intern roles only when asked; `staff+` when the user wants Staff/Principal.
+6. Soft-filter with `locations` / parsed `locations[].city`, `industries`, `companyStages`, `mustHaves`, `dealBreakers`, `notes`, `salaryMin` in judgment — do not invent salary on jobs that lack it.
+   Hybrid NYC-or-Remote jobs live in both shards; `onsiteLocations` still gates in-person cities.
+7. **Former employers:** read `formerEmployers` + `formerEmployerPolicy`.
    - `exclude` — omit those companies from default result sets (still show if the user named the company).
    - `include` — treat like any other company.
    - `ask` — if matches appear, list them separately and ask before emphasizing / expanding.
    Match company names case-insensitively / lightly normalized (ignore Inc, LLC, etc.).
-7. If the user query conflicts with prefs, **query wins**.
+8. If the user query conflicts with prefs, **query wins**.
 
 Mention once when defaults applied: e.g. `Using your prefs: remote + NYC, product, senior IC (excluding former employers)`.
 
@@ -97,10 +100,18 @@ Mention once when defaults applied: e.g. `Using your prefs: remote + NYC, produc
 
 ### Pattern B: "Find me [Role] jobs in [Location]" (PREFERRED)
 
-1. Map role → category, location → bucket, seniority if given
-2. Read granular file(s) from manifest `byLocation`
-3. Sort by `lastSeen` / `postedAt` descending
-4. Output in **strict format** below
+1. Map role → category, location → bucket, seniority if given (prefs are defaults; query wins)
+2. Run the local ranker — do **not** load whole shards into context:
+
+```bash
+DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
+SUITE="$(cat "$DATA/suite-root" 2>/dev/null || true)"
+SUITE="${NETWORK_JOBS_SUITE:-${SUITE:-}}"
+python3 "$SUITE/skills/network-jobs/helpers/rank-jobs.py" --k 25 --query "$USER_QUERY"
+```
+
+3. Read `$DATA/search/ranked.json` only. Use `showing` (`K of N`) as the summary line.
+4. Output in **strict format** below. Never paste a full category/shard dump.
 
 ### Pattern B2: Broad queries
 
@@ -112,11 +123,11 @@ Sort preferred category (or ask) by `firstSeen` desc; show latest ~10.
 
 ### Pattern D: Remote / location-only
 
-Use `{category}-{location}-senior.json` + `-mid.json`.
+Same ranker with `--query` including remote / city. Still prefer granular shards inside the helper.
 
 ### Pattern E: Salary filter
 
-Filter where `salary.min` or `salary.max` meets threshold; skip jobs with no salary.
+Ranker already downranks missing/low salary vs `preferences.salaryMin`. For an explicit floor, pass it in the query (`over 200k`) and skip jobs with no salary when presenting.
 
 ## Output Format
 
@@ -124,7 +135,7 @@ Filter where `salary.min` or `salary.max` meets threshold; skip jobs with no sal
 
 1. Header: `Searching via [Name] ([Title])...` or with `@ [Company]` if set
 2. Data freshness: `Data as of [Mon D], [H:MM AM/PM] ([relative] ago)` from `manifest.lastUpdated`
-3. Summary line: `X [role] roles in [location]:`
+3. Summary line: `Showing K of N` from `search/ranked.json` (then the usual `X [role] roles in [location]:` if useful)
 4. Group by company (COMPANY NAME in caps, then `- N roles`)
 5. Each job: `• [Title] – [Salary if available], [N]d [↗](url)`
 6. Days from `postedAt` else `firstSeen` (`3d`, `14d`, …)
@@ -136,6 +147,7 @@ Filter where `salary.min` or `salary.max` meets threshold; skip jobs with no sal
 Searching via Frank Harris (Executive Coach)...
 Data as of Jul 8, 3:00 PM (2h ago)
 
+Showing 8 of 42
 8 PM roles in NYC:
 
 JUSTWORKS - 5 roles
@@ -151,10 +163,15 @@ Connections at Justworks: …
 - Narrative summaries (“I found 93 roles including…”)
 - Omit `[↗](url)` links
 - Curl remote job hosts for corpus data
+- Dump whole `corpus/*.json` shards into context (use the ranker)
+
+## Helpers
+
+- [`helpers/rank-jobs.py`](helpers/rank-jobs.py) — corpus shards + prefs + résumé keywords → `$DATA/search/ranked.json` (`Showing K of N`)
 
 ## Related Skills
 
 - **network-jobs-setup** — profile, résumé, preferences interview
 - **careers-discover** / **jobs-ingest** — refresh local openings
-- **intro-email-generator** — draft forwardable warm intro (pass job URL + forwarder name; résumé from `~/.network-jobs/resume/`)
+- **intro-email-generator** — draft forwardable warm intro. After ranked jobs, run `rank-intros.py` (1–2 roles, 1–2 forwarders; fetch JD only for those URLs).
 - **network-jobs-import** — refresh LinkedIn graph

@@ -37,10 +37,19 @@ People often write the email addressed to the wrong person. They write to the ta
 
 Gather before generating:
 - **Resume** — prefer `~/.network-jobs/resume/text.md` (or `source.*`); else uploaded file, pasted text, or URL
-- **Job description** — text or job posting URL
+- **Ranked intros** — run the helper first (joins **full** `connections.json`, not the 10-person sample):
+
+```bash
+DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
+SUITE="$(cat "$DATA/suite-root" 2>/dev/null || true)"
+SUITE="${NETWORK_JOBS_SUITE:-${SUITE:-}}"
+python3 "$SUITE/skills/intro-email-generator/helpers/rank-intros.py" --k-roles 2 --k-forwarders 2
+cat "$DATA/search/intros.json"
+```
+
+  Use at most **1–2 roles** and **1–2 forwarders**. `fetchJdUrls` is the only set of job URLs to fetch. If a JD fetch fails, draft from `department` (and title) — do not scrape every posting.
 - **Profile** — `~/.network-jobs/profile.json` for seeker name/email when present
 - **Additional context** (optional) — key achievements, why they're interested, specific angles to emphasize
-- **Job URL** (optional) — for the closing; if unavailable, reference job title instead
 
 ```bash
 DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
@@ -128,9 +137,12 @@ For more examples, see [examples.md](examples.md).
 ## Integration with network-jobs
 
 If the user found a job using the network-jobs skill:
-- The job URL is already available from the search results
-- The company and role context can be pulled from the job data
+- Run `rank-intros.py` against `search/ranked.json` + `connections/connections.json`
+- Confirm 1–2 roles and 1–2 forwarders with the user
+- Fetch JD **only** for `fetchJdUrls` (or skip and use `department`)
 - Job seeker name/email may be in ~/.network-jobs/profile.json
-- Forwarder candidates may be in companies.json people[] for that company
-- Ask for the user's resume and confirm the forwarder name
-- Generate the intro email using the job details
+- Generate the intro email using the job details + résumé
+
+## Helpers
+
+- [`helpers/rank-intros.py`](helpers/rank-intros.py) — 1–2 roles + 1–2 forwarders → `$DATA/search/intros.json`

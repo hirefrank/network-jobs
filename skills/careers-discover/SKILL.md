@@ -29,6 +29,12 @@ Read [SCHEMA.md](../../SCHEMA.md) first. Pattern inspired by Provenance `source-
 
 ## Workflow
 
+```bash
+DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
+SUITE="$(cat "$DATA/suite-root" 2>/dev/null || true)"
+SUITE="${NETWORK_JOBS_SUITE:-${SUITE:-}}"
+```
+
 1. **Pick companies**
    - Read `$DATA/companies/companies.json`
    - Prefer high `connectionCount`, or filter by user query
@@ -52,9 +58,17 @@ Read [SCHEMA.md](../../SCHEMA.md) first. Pattern inspired by Provenance `source-
 
 4. **Extract listings**
    - Prefer structured JSON if the page or network tab exposes a jobs API
-   - Else parse visible listing cards / table rows
-   - For each role capture: `title`, `url` (required), `location`, `department`, `salary` (only if shown), `postedAt` (only if shown), `sourceUrl`
-   - Follow pagination / “Load more” when practical; note caps in INVENTORY
+   - When a jobs JSON/API URL is known, **paginate in the helper** (not in the model context):
+
+```bash
+python3 "$SUITE/skills/careers-discover/helpers/paginate-listings.py" \
+  --url "$JOBS_JSON_URL" --triage-dir "$TRIAGE" --company "$NAME" --max-pages 15
+```
+
+     Follows `page` / `cursor` / `offset` / `links.next` generically. Writes `index/listings.json`, `index/pagination.json` (`pages`, `complete`, `truncated`), and one fetch-log metadata file **per page**. Cap `maxPages`.
+   - Else parse visible listing cards / table rows (still write fetch-log before summarizing)
+   - For each role capture: `title`, `url` (required), `location` and `locations[]` when shown, `department`, `externalId` if the JSON has an id, `salary` / `postedAt` only if shown, `sourceUrl`
+   - Never invent ATS-specific parsers. If the helper truncates, set `complete: false` and say so in INVENTORY.
 
 5. **Stage**
 
@@ -62,24 +76,53 @@ Read [SCHEMA.md](../../SCHEMA.md) first. Pattern inspired by Provenance `source-
 $DATA/triage/careers-<slug>-<YYYY-MM-DD>/
 ├── INVENTORY.md
 ├── index/listings.json
+├── index/matches.json
 └── fetch-log/<timestamp>-<label>.json
 ```
 
 Use [`helpers/stage-company.sh`](helpers/stage-company.sh) to mkdir + write skeleton files, then fill listings.
 
-6. **INVENTORY.md must include**
+6. **Crawl budget (required helper)**
+
+```bash
+python3 "$SUITE/skills/careers-discover/helpers/crawl-state.py" \
+  --triage-dir "$TRIAGE" --company "$NAME"
+# After a successful extract (even truncated), stamp lastCrawl + hash:
+python3 "$SUITE/skills/careers-discover/helpers/crawl-state.py" \
+  --triage-dir "$TRIAGE" --company "$NAME" --stamp
+```
+
+Compares listing-set hash to `companies.json`. Caps: **15 API pages**, **5 browser load-more pages**, 2000 listings. Fetch-log metadata is written per page by paginate (default). If `unchanged: true`, say so and **skip ingest** (delta is empty) — do not expire anything. If the hash changed, ingest is a fingerprint merge (new/changed rows only; expiry still requires `pagination.complete`).
+
+7. **Shortlist against prefs (required helper)**
+
+After `index/listings.json` is written, run — do **not** score the board in the model:
+
+```bash
+DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
+SUITE="$(cat "$DATA/suite-root" 2>/dev/null || true)"
+SUITE="${NETWORK_JOBS_SUITE:-${SUITE:-}}"
+python3 "$SUITE/skills/careers-discover/helpers/match-prefs.py" \
+  --triage-dir "$TRIAGE" --company "$NAME"
+```
+
+This writes `index/matches.json` and patches INVENTORY with **N of M match prefs** plus a department histogram. Quiet JSON on stdout (`-v` for departments).
+
+8. **INVENTORY.md must include**
    - Company name + slug
    - Careers URL(s) used
-   - Listing count
+   - Listing count **and** “N of M match prefs”
+   - Department histogram (from the helper)
+   - Pagination `{pages, complete, truncated}` and crawl hash / skip-if-unchanged
    - Connections at company (from graph) + sample people
    - Caveats (bot wall, partial pagination, uncertain domain)
-   - Next steps (“ready for jobs-ingest?” / “need recipe”)
+   - Next steps (“ingest matches?” / “ingest all” / department slice)
 
-7. **Hand off (hard stop)**
-   - Point at each triage dir and summarize counts / caveats from `INVENTORY.md`
-   - Ask whether to run `jobs-ingest` on this batch
+9. **Hand off (hard stop)**
+   - Point at each triage dir. Quote the helper’s `showing` line (e.g. `14 of 120 match prefs`) — do not paste the full listings array.
+   - Ask whether to run `jobs-ingest` on **matches** (default), **all** listings, or a department slice.
    - **STOP.** Do **not** invoke `jobs-ingest`, rebuild the corpus, or resume a job search in the same turn.
-   - Only after the user explicitly confirms (e.g. “ingest these”, “promote the Google batch”) should you load **jobs-ingest**.
+   - Only after the user explicitly confirms (e.g. “ingest these”, “ingest matches”, “ingest all”, “promote the Google batch”) should you load **jobs-ingest**.
 
 ## Bot / fetch tiers
 
@@ -102,7 +145,7 @@ Use when tier 1 yields:
 - Pagination or filters that require click / “Load more” / infinite scroll
 - Client-side routing where listing URLs aren’t discoverable from static HTML
 
-Workflow: open URL → snapshot → interact by refs → re-snapshot after DOM changes → write fetch-log before summarizing.
+Workflow: open URL → snapshot → interact by refs → re-snapshot after DOM changes → write fetch-log before summarizing. Cap **5** “Load more” / next-page clicks; if you stop early, pagination.complete is false.
 
 ### 3. User capture / CDP
 
@@ -123,6 +166,9 @@ Never start with agent-browser for a simple static page. Never keep retrying bro
 
 - [`helpers/stage-company.sh`](helpers/stage-company.sh) — create triage dir skeleton
 - [`helpers/fetch-page.sh`](helpers/fetch-page.sh) — curl page to fetch-log + stdout path
+- [`helpers/paginate-listings.py`](helpers/paginate-listings.py) — page/cursor/offset into `listings.json` + `pagination.json`
+- [`helpers/crawl-state.py`](helpers/crawl-state.py) — listing-set hash vs lastCrawl; `--stamp` after a successful extract
+- [`helpers/match-prefs.py`](helpers/match-prefs.py) — score listings vs `preferences.json` → `index/matches.json`
 
 ## Related
 
