@@ -168,6 +168,12 @@ def classify_job(job: dict[str, Any], company: str | None = None) -> dict[str, A
     category, cat_conf, cat_amb = classify_category(title, department)
     track, track_conf, track_amb = classify_track(title, department)
     seniority, signals = classify_seniority(title)
+    if track == "manager" and seniority == "mid" and "intern" not in signals:
+        # People-manager titles are senior-level roles ("Engineering Manager"
+        # was landing in mid and hard-failing users with seniority=["senior"]).
+        # IC-flavored managers (Account/Program/Project Manager) already map to
+        # the ic track above, so this only promotes true people managers.
+        seniority, signals = "senior", [*signals, "manager"]
     buckets = location_buckets_for(job)
     parsed = parse_locations(job)
     out = dict(job)

@@ -33,7 +33,7 @@ Optional alternate skill placement: `npx skills add hirefrank/network-jobs -g -a
 - “Find open roles at my top companies” → review triage → “ingest that batch”  
 - “Senior PM jobs in NYC” → “Draft an intro to Jane”
 
-Daily use is **in the agent**. The CLI is for install, update, doctor, résumé/LinkedIn import, and corpus clear.
+Daily use is **in the agent**. The CLI also covers install, update, doctor, résumé/LinkedIn import, corpus clear, and quick `search` / `companies` / `refresh`.
 
 ## Tips
 
@@ -107,6 +107,11 @@ network-jobs profile clear [--resume] [--yes]
 network-jobs corpus clear [--triage] [--yes]
 network-jobs reset [--data] [--purge-cache] [--yes]
 network-jobs uninstall [--yes]    # alias for reset --data
+
+# Day-to-day (also available in your agent):
+network-jobs search [--query "..."] [-k N] [--include-stale]
+network-jobs companies [--sort connections|name|crawl]
+network-jobs refresh [--company NAME] [--limit N]
 ```
 
 Skills self-describe for routing. `network-jobs routing` prints an optional snippet for a project instruction file.

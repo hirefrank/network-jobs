@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# network-jobs — local CLI for setup, doctor, and LinkedIn import.
+# network-jobs — local CLI: setup/doctor/import plus day-to-day search, companies, refresh.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -28,6 +28,15 @@ Commands:
 
   import <zip-or-csv> [--min-count N]
       Parse LinkedIn Connections into the local company graph
+
+  search [--query "..."] [-k N] [--include-stale] [--json]
+      Rank the corpus against your prefs and print matching jobs
+
+  companies [--sort connections|name|crawl] [--json]
+      List the company graph: connections, last crawl, listing-set hash
+
+  refresh [--company NAME] [--limit N] [--json]
+      Re-crawl known listings endpoints (oldest first), stage new matches
 
   profile import <resume-file>
       Store résumé under ~/.network-jobs/resume/ (feeds profile + interview)
@@ -67,7 +76,8 @@ Env:
   NETWORK_JOBS_HOME        Data directory (default: ~/.network-jobs)
   NETWORK_JOBS_SKILLS_DIR  Install skills into this single parent only
 
-Day-to-day use happens in your agent. The CLI is for install, update, doctor, and import.
+Day-to-day searching also works from this CLI (search, companies, refresh);
+deeper multi-step work happens in your agent.
 EOF
 }
 
@@ -147,6 +157,63 @@ Options:
 Examples:
   network-jobs import ~/Downloads/Connections.zip
   network-jobs import ./fixtures/Connections.csv --min-count 2
+EOF
+}
+
+usage_search() {
+  cat <<'EOF'
+Usage: network-jobs search [--query "..."] [-k N] [--include-stale] [--json]
+
+Rank the corpus against preferences.json (+ résumé keywords) and print the
+top matches. Also writes ~/.network-jobs/search/ranked.json for follow-on
+steps like rank-intros.
+
+Options:
+  --query "..."    Boost jobs matching these terms (also narrows shards)
+  -k N            Show the top N matches (default: 25)
+  --include-stale Also show stale postings (posted >90d ago, hidden by default)
+  --json          Print the ranked.json payload instead of a human list
+  --help, -h      Show this help
+
+Examples:
+  network-jobs search
+  network-jobs search --query "staff product engineer" -k 10
+EOF
+}
+
+usage_companies() {
+  cat <<'EOF'
+Usage: network-jobs companies [--sort connections|name|crawl] [--json]
+
+List the company graph: connection counts, last crawl time, listing-set hash,
+and whether a listings endpoint is stored (jobsUrl, needed for refresh).
+
+Options:
+  --sort KEY   connections (default), name, or crawl
+  --json       Print companies.json rows instead of a table
+  --help, -h   Show this help
+EOF
+}
+
+usage_refresh() {
+  cat <<'EOF'
+Usage: network-jobs refresh [--company NAME] [--limit N] [--json]
+
+Re-crawl the listings JSON endpoints stored on the company graph (stamped by
+crawl-state --stamp --source-url during careers-discover), oldest crawl first.
+Changed boards are re-scored against your prefs and staged under
+~/.network-jobs/triage/careers-<slug>-<today>/; unchanged boards just get
+their lastCrawl stamped. Fully deterministic — no model in the loop.
+
+Options:
+  --company NAME Only refresh this company (name or slug)
+  --limit N      Max companies per run (default: 5, oldest crawl first)
+  --json         Print a machine-readable summary
+  --help, -h     Show this help
+
+Examples:
+  network-jobs refresh
+  network-jobs refresh --company stripe --limit 1
 EOF
 }
 
@@ -268,6 +335,9 @@ cmd_help() {
     update) usage_update ;;
     doctor) usage_doctor ;;
     import) usage_import ;;
+    search) usage_search ;;
+    companies) usage_companies ;;
+    refresh) usage_refresh ;;
     profile) usage_profile ;;
     corpus) usage_corpus ;;
     reset|uninstall) usage_reset ;;
@@ -911,6 +981,35 @@ cmd_which() {
   echo "data=$DATA_HOME"
 }
 
+# Day-to-day commands delegate to the Python lib CLI (network_jobs.cli).
+_lib_cli() {
+  PYTHONPATH="$ROOT/lib${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m network_jobs.cli "$@"
+}
+
+cmd_search() {
+  if network_jobs_want_help "$@"; then
+    usage_search
+    return 0
+  fi
+  _lib_cli search "$@"
+}
+
+cmd_companies() {
+  if network_jobs_want_help "$@"; then
+    usage_companies
+    return 0
+  fi
+  _lib_cli companies "$@"
+}
+
+cmd_refresh() {
+  if network_jobs_want_help "$@"; then
+    usage_refresh
+    return 0
+  fi
+  _lib_cli refresh "$@"
+}
+
 case "$cmd" in
   ""|-h|--help) usage ;;
   -V|--version|version) network_jobs_version ;;
@@ -925,6 +1024,9 @@ case "$cmd" in
   update) cmd_update "$@" ;;
   doctor) cmd_doctor "$@" ;;
   import) cmd_import "$@" ;;
+  search) cmd_search "$@" ;;
+  companies) cmd_companies "$@" ;;
+  refresh) cmd_refresh "$@" ;;
   profile) cmd_profile "$@" ;;
   corpus) cmd_corpus "$@" ;;
   reset) cmd_reset "$@" ;;
