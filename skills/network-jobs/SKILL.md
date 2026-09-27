@@ -111,7 +111,13 @@ python3 "$SUITE/skills/network-jobs/helpers/rank-jobs.py" --k 25 --query "$USER_
 ```
 
 3. Read `$DATA/search/ranked.json` only. Use `showing` (`K of N`) as the summary line.
+   If `staleHidden` > 0, add one line: `(+N stale postings hidden — say "include stale" to see them)`.
 4. Output in **strict format** below. Never paste a full category/shard dump.
+
+Shortcut: `network-jobs search --query "..." -k 25` runs the ranker, writes
+`search/ranked.json`, and prints a human-readable list in one step. Add
+`--include-stale` to surface stale postings. `network-jobs refresh` re-crawls
+known boards (oldest first) and stages new matches under `triage/`.
 
 ### Pattern B2: Broad queries
 

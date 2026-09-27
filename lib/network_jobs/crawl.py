@@ -63,6 +63,7 @@ def stamp_company_crawl(
     listings: list[dict[str, Any]],
     pagination: dict[str, Any] | None = None,
     company_name: str | None = None,
+    source_url: str | None = None,
 ) -> dict[str, Any]:
     companies = _load_companies(companies_path)
     status = crawl_status(companies, slug_or_name, listings, company_name=company_name)
@@ -79,6 +80,10 @@ def stamp_company_crawl(
         companies.append(row)
     row["lastCrawl"] = _now()
     row["listingSetHash"] = status["listingSetHash"]
+    if source_url:
+        # The listings JSON endpoint this crawl paginated; refresh uses it to
+        # re-crawl deterministically without a model in the loop.
+        row["jobsUrl"] = source_url
     if pagination:
         row["lastPagination"] = {
             "pages": pagination.get("pages"),

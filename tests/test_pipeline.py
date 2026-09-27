@@ -166,7 +166,7 @@ class RankerTests(unittest.TestCase):
         shutil.copy(FIXTURES / "resume-keywords.md", self.tmp / "resume" / "text.md")
 
     def test_ranker_top_k_not_whole_dump(self):
-        result = rank_corpus(data_dir=self.tmp, k=1)
+        result = rank_corpus(data_dir=self.tmp, k=1, today="2026-09-16")
         self.assertEqual(result["k"], 1)
         self.assertGreaterEqual(result["n"], 1)
         self.assertEqual(result["showing"], f"1 of {result['n']}")
@@ -217,7 +217,7 @@ class RankerTests(unittest.TestCase):
         shutil.copy(FIXTURES / "preferences.json", tmp / "preferences.json")
         (tmp / "resume").mkdir()
         shutil.copy(FIXTURES / "resume-keywords.md", tmp / "resume" / "text.md")
-        result = rank_corpus(data_dir=tmp, k=2)
+        result = rank_corpus(data_dir=tmp, k=2, today="2026-09-16")
         self.assertEqual(result["n"], 2)
         scores = [j["matchScore"] for j in result["jobs"]]
         self.assertEqual(scores[0], scores[1])
@@ -638,6 +638,229 @@ class CrawlAndIntroTests(unittest.TestCase):
         intros = json.loads((tmp / "search" / "intros.json").read_text())
         self.assertEqual(len(intros["fetchJdUrls"]), 2)
         self.assertLessEqual(len(intros["roles"]), 2)
+
+
+class ManagerSeniorityTests(unittest.TestCase):
+    def test_engineering_manager_is_senior(self):
+        from network_jobs.classify import classify_job
+
+        out = classify_job({"title": "Engineering Manager", "department": "Engineering"})
+        self.assertEqual(out["track"], "manager")
+        self.assertEqual(out["seniority"], "senior")
+        self.assertIn("manager", out["senioritySignals"])
+
+    def test_ic_manager_titles_stay_mid(self):
+        from network_jobs.classify import classify_job
+
+        # "Account Manager" is an IC role — must not be promoted to senior.
+        out = classify_job({"title": "Account Manager", "department": "Sales"})
+        self.assertEqual(out["track"], "ic")
+        self.assertEqual(out["seniority"], "mid")
+
+    def test_manager_intern_not_promoted(self):
+        from network_jobs.classify import classify_job
+
+        out = classify_job({"title": "Engineering Manager Intern", "department": "Engineering"})
+        self.assertIn("intern", out["senioritySignals"])
+        self.assertEqual(out["seniority"], "mid")
+
+
+class RecencyStaleTests(unittest.TestCase):
+    def _corpus(self, jobs):
+        tmp = Path(tempfile.mkdtemp(prefix="nj-stale-"))
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        corpus = tmp / "corpus"
+        corpus.mkdir()
+        (corpus / "jobs-all.json").write_text(json.dumps(jobs, indent=2) + "\n")
+        (corpus / "manifest.json").write_text(json.dumps({
+            "lastUpdated": "2026-09-20T00:00:00Z",
+            "totalJobs": len(jobs),
+            "categories": {},
+        }) + "\n")
+        (tmp / "preferences.json").write_text(json.dumps({}) + "\n")
+        return tmp
+
+    def _job(self, jid, postedAt=None, lastSeen="2026-09-20"):
+        return {
+            "id": jid, "title": "Senior Backend Engineer", "company": "Acme",
+            "department": "Engineering", "category": "engineering",
+            "location": "Remote", "locationBucket": "remote", "seniority": "senior",
+            "url": f"https://example.com/{jid}", "postedAt": postedAt,
+            "lastSeen": lastSeen,
+        }
+
+    def test_recent_posting_gets_boost(self):
+        tmp = self._corpus([
+            self._job("fresh", postedAt="2026-09-18"),
+            self._job("oldish", postedAt="2026-08-01"),
+        ])
+        res = rank_corpus(data_dir=tmp, k=2, today="2026-09-20")
+        by_id = {j["id"]: j for j in res["jobs"]}
+        self.assertIn("recent", by_id["fresh"]["matchReasons"])
+        self.assertNotIn("recent", by_id["oldish"]["matchReasons"])
+        self.assertGreater(by_id["fresh"]["matchScore"], by_id["oldish"]["matchScore"])
+
+    def test_stale_posting_hidden_by_default(self):
+        tmp = self._corpus([
+            self._job("fresh", postedAt="2026-09-18"),
+            self._job("ancient", postedAt="2026-05-01"),
+        ])
+        res = rank_corpus(data_dir=tmp, k=10, today="2026-09-20")
+        self.assertEqual(res["staleHidden"], 1)
+        self.assertEqual([j["id"] for j in res["jobs"]], ["fresh"])
+
+    def test_include_stale_sorts_last(self):
+        tmp = self._corpus([
+            self._job("fresh", postedAt="2026-09-18"),
+            self._job("ancient", postedAt="2026-05-01"),
+        ])
+        res = rank_corpus(data_dir=tmp, k=10, today="2026-09-20", include_stale=True)
+        self.assertEqual(res["staleHidden"], 0)
+        self.assertEqual(res["jobs"][-1]["id"], "ancient")
+        self.assertTrue(res["jobs"][-1]["stale"])
+
+    def test_old_unseen_job_without_postedAt_is_stale(self):
+        tmp = self._corpus([self._job("ghost", postedAt=None, lastSeen="2026-01-01")])
+        res = rank_corpus(data_dir=tmp, k=10, today="2026-09-20")
+        self.assertEqual(res["n"], 0)
+        self.assertEqual(res["staleHidden"], 1)
+
+    def test_postedAt_formats_parsed(self):
+        from datetime import date
+
+        from network_jobs.rank import posting_age_days
+
+        today = date(2026, 9, 20)
+        self.assertEqual(posting_age_days("2026-09-18T10:00:00Z", today), 2)
+        self.assertEqual(posting_age_days("09/18/2026", today), 2)
+        self.assertIsNone(posting_age_days("sometime last week", today))
+        self.assertIsNone(posting_age_days(None, today))
+
+
+class ResumeKeywordTests(unittest.TestCase):
+    def test_noise_and_name_tokens_dropped(self):
+        from network_jobs.prefs import load_resume_keywords, name_tokens
+
+        text = (
+            "Ada Lovelace led a team building new distributed systems. "
+            "Work included Python, Kubernetes, and 0-to-1 product launches. "
+            "Ada Lovelace has a strong track record of shipping."
+        )
+        kws = load_resume_keywords(text, exclude=name_tokens({"name": "Ada Lovelace"}))
+        for noisy in ("ada", "lovelace", "new", "work", "led", "strong", "track", "record"):
+            self.assertNotIn(noisy, kws)
+        self.assertIn("python", kws)
+        self.assertIn("kubernetes", kws)
+        self.assertIn("distributed", kws)
+
+
+class CompaniesRefreshTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="nj-comp-"))
+        self.addCleanup(lambda: shutil.rmtree(self.tmp, ignore_errors=True))
+        (self.tmp / "companies").mkdir()
+        (self.tmp / "companies" / "companies.json").write_text(json.dumps([
+            {
+                "name": "Acme", "normalized": "acme", "slug": "acme",
+                "domain": "acme.com", "connectionCount": 5, "people": [],
+                "lastCrawl": "2026-09-01T00:00:00Z",
+                "listingSetHash": "stale-hash",
+                "jobsUrl": "https://jobs.example.com/acme.json",
+            },
+            {
+                "name": "Beta", "normalized": "beta", "slug": "beta",
+                "domain": "beta.com", "connectionCount": 2, "people": [],
+            },
+        ]) + "\n")
+        (self.tmp / "preferences.json").write_text(json.dumps({}) + "\n")
+
+    def _listing_payload(self, title="Senior Backend Engineer"):
+        return {
+            "jobs": [
+                {
+                    "title": title, "department": "Engineering",
+                    "location": "Remote", "url": "https://jobs.example.com/acme/1",
+                    "postedAt": "2026-09-19",
+                }
+            ]
+        }
+
+    def test_companies_json_flag(self):
+        rc = helper_main(["companies", "--data", str(self.tmp), "--json"])
+        self.assertEqual(rc, 0)
+
+    def test_crawl_state_stamp_stores_jobs_url(self):
+        listings_path = self.tmp / "listings.json"
+        listings_path.write_text(json.dumps([{"title": "X", "company": "Acme"}]) + "\n")
+        rc = helper_main([
+            "crawl-state", "--data", str(self.tmp), "--company", "Beta",
+            "--stamp", "--source-url", "https://jobs.example.com/beta.json",
+            "--listings", str(listings_path),
+        ])
+        self.assertEqual(rc, 0)
+        companies = json.loads((self.tmp / "companies" / "companies.json").read_text())
+        beta = next(c for c in companies if c["slug"] == "beta")
+        self.assertEqual(beta["jobsUrl"], "https://jobs.example.com/beta.json")
+        self.assertTrue(beta["lastCrawl"])
+
+    def test_refresh_stages_changed_board(self):
+        from network_jobs.cli import _do_refresh
+
+        payload = self._listing_payload()
+        body = json.dumps(payload).encode()
+        results = _do_refresh(
+            self.tmp, company="acme", limit=5,
+            fetch=lambda url: (payload, 200, body),
+            today="2026-09-20",
+        )
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["status"], "changed")
+        self.assertEqual(results[0]["matches"], 1)
+        triage = Path(results[0]["triage"])
+        self.assertTrue((triage / "index" / "matches.json").is_file())
+        companies = json.loads((self.tmp / "companies" / "companies.json").read_text())
+        acme = next(c for c in companies if c["slug"] == "acme")
+        self.assertNotEqual(acme["listingSetHash"], "stale-hash")
+        self.assertEqual(acme["jobsUrl"], "https://jobs.example.com/acme.json")
+
+    def test_refresh_unchanged_board_only_stamps(self):
+        from network_jobs.cli import _do_refresh
+        from network_jobs.fingerprint import listing_set_hash
+
+        payload = self._listing_payload()
+        body = json.dumps(payload).encode()
+        first = _do_refresh(
+            self.tmp, company="acme", limit=5,
+            fetch=lambda url: (payload, 200, body),
+            today="2026-09-20",
+        )
+        self.assertEqual(first[0]["status"], "changed")
+        second = _do_refresh(
+            self.tmp, company="acme", limit=5,
+            fetch=lambda url: (payload, 200, body),
+            today="2026-09-20",
+        )
+        self.assertEqual(second[0]["status"], "unchanged")
+        self.assertNotIn("triage", second[0])
+
+    def test_refresh_error_does_not_kill_run(self):
+        from network_jobs.cli import _do_refresh
+
+        def boom(url):
+            raise ConnectionError("dns blew up")
+
+        results = _do_refresh(
+            self.tmp, company="acme", limit=5, fetch=boom, today="2026-09-20",
+        )
+        self.assertEqual(results[0]["status"], "error")
+        self.assertIn("ConnectionError", results[0]["error"])
+
+    def test_refresh_skips_companies_without_jobs_url(self):
+        from network_jobs.cli import _do_refresh
+
+        results = _do_refresh(self.tmp, limit=5, fetch=lambda url: ({}, 200, b"{}"))
+        # Only Acme has a jobsUrl; Beta is skipped.
+        self.assertEqual([r["slug"] for r in results], ["acme"])
 
 
 if __name__ == "__main__":

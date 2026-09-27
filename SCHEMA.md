@@ -151,6 +151,7 @@ Aggregated company graph (connection counts + sample people):
     ],
     "lastCrawl": "2026-09-16T02:00:00Z",
     "listingSetHash": "a1b2c3d4e5f60789",
+    "jobsUrl": "https://api.example.com/v1/jobs",
     "lastPagination": { "pages": 4, "complete": true, "truncated": false }
   }
 ]
@@ -158,6 +159,8 @@ Aggregated company graph (connection counts + sample people):
 
 - `normalized` — lowercase, punctuation/suffix stripped (see import helper).
 - `slug` — filesystem-safe form of `normalized`.
+- `jobsUrl` — listings JSON endpoint stamped by `crawl-state --stamp --source-url`;
+  `network-jobs refresh` re-crawls it deterministically (no model in the loop).
 - `domain` — filled later during careers discovery when known.
 - `people` — up to 10 sample connections (not the full roster). **Intro ranking joins `connections.json`**, not this sample.
 - `lastCrawl` / `listingSetHash` / `lastPagination` — crawl budget. If the listing-set hash matches, skip refresh/ingest (delta is empty). Stamp after a successful paginated extract. Caps: 15 API pages, 5 browser “load more” pages, 2000 listings.
@@ -305,10 +308,10 @@ Keep `senior` / `mid` shards as the fast path.
 
 | Bucket | Title signals |
 |--------|----------------|
-| `senior` | Senior, Staff, Principal, Lead, Director, VP, Head of |
+| `senior` | Senior, Staff, Principal, Lead, Director, VP, Head of, **people-manager titles** (`Engineering Manager`, `Director of Engineering`, …) |
 | `mid` | Everything else (including internships) |
 
-Additional **`senioritySignals`** on the job object: `intern`, `staff+`. Prefs or queries can filter those without new shard files. Interns stay in `mid`; Staff/Principal stay in `senior` plus `staff+`.
+Additional **`senioritySignals`** on the job object: `intern`, `staff+`, `manager`. Prefs or queries can filter those without new shard files. Interns stay in `mid`; Staff/Principal stay in `senior` plus `staff+`. People-manager titles (track `manager`) land in `senior` with the `manager` signal — IC-flavored "manager" titles (`Account Manager`, `Program Manager`) stay on the `ic` track and are not promoted.
 
 `track` is persisted on the job (`ic` | `manager`) by the classifier.
 
@@ -364,6 +367,14 @@ Search ranker: `skills/network-jobs/helpers/rank-jobs.py` writes `search/ranked.
   "showing": "25 of 430",
   "query": "senior pm nyc",
   "shards": ["product-nyc-senior.json"],
+  "staleHidden": 12,
   "jobs": []
 }
 ```
+
+- `staleHidden` — postings excluded as stale: `postedAt` older than 90 days, or
+  no `postedAt` and `lastSeen` older than 120 days. Re-run rank with
+  `--include-stale` to see them (they carry `"stale": true` and sort last).
+- Recency boost: postings from the last 14 days get +2 (`matchReasons` gains
+  `recent`), last 30 days get +1.
+

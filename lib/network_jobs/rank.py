@@ -3,13 +3,64 @@
 from __future__ import annotations
 
 import json
+import re
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
 from .paths import data_home
-from .prefs import load_resume_keywords, score_job
+from .prefs import load_resume_keywords, name_tokens, score_job
 
 DEFAULT_K = 25
+
+#: Postings older than this (by postedAt) are flagged stale and hidden by default.
+STALE_POSTED_DAYS = 90
+#: Without a postedAt we can't judge posting age; fall back to crawl freshness.
+STALE_UNSEEN_DAYS = 120
+#: Fresh postings get a small, explainable boost so new roles surface first.
+RECENT_BOOST_DAYS = 14
+RECENT_BOOST = 2.0
+SEMI_RECENT_BOOST_DAYS = 30
+SEMI_RECENT_BOOST = 1.0
+
+
+def _parse_posted_date(raw: Any) -> date | None:
+    """Best-effort postedAt → date. ATS formats vary wildly; None when unknown."""
+    if not raw:
+        return None
+    s = str(raw).strip()
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", s)
+    if m:
+        try:
+            return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        except ValueError:
+            return None
+    for fmt in ("%Y/%m/%d", "%m/%d/%Y", "%b %d, %Y", "%B %d, %Y"):
+        try:
+            return datetime.strptime(s[:24], fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def posting_age_days(raw: Any, today: date | None = None) -> int | None:
+    """Age in days of a postedAt/lastSeen-style value; None when unparseable."""
+    d = _parse_posted_date(raw)
+    if d is None:
+        return None
+    today = today or date.today()
+    return max(0, (today - d).days)
+
+
+def job_is_stale(job: dict[str, Any], today: date | None = None) -> bool:
+    """A posting is stale when the posting itself is old, or when we have no
+    postedAt and haven't confirmed the listing in a long time."""
+    today = today or date.today()
+    posted_age = posting_age_days(job.get("postedAt"), today)
+    if posted_age is not None:
+        return posted_age > STALE_POSTED_DAYS
+    seen_age = posting_age_days(job.get("lastSeen") or job.get("firstSeen"), today)
+    return seen_age is not None and seen_age > STALE_UNSEEN_DAYS
 
 
 def _read_json(path: Path) -> Any:
@@ -94,19 +145,44 @@ def rank_corpus(
     query: str | None = None,
     prefs: dict[str, Any] | None = None,
     resume_text: str | None = None,
+    include_stale: bool = False,
+    today: date | str | None = None,
 ) -> dict[str, Any]:
     root = data_home(data_dir)
     corpus = root / "corpus"
+    if isinstance(today, str):
+        today = date.fromisoformat(today[:10])
+    today_d = today or date.today()
     if prefs is None:
         raw = _read_json(root / "preferences.json")
         prefs = raw if isinstance(raw, dict) else {}
     if resume_text is None:
         resume_path = root / "resume" / "text.md"
         resume_text = resume_path.read_text() if resume_path.is_file() else ""
-    keywords = load_resume_keywords(resume_text) if resume_text else []
+    profile = _read_json(root / "profile.json") or {}
+    keywords = load_resume_keywords(resume_text, exclude=name_tokens(profile)) if resume_text else []
     jobs, shard_files = _iter_shards(corpus, prefs, query)
     scored = [score_job(j, prefs, resume_keywords=keywords) for j in jobs]
     scored = [j for j in scored if not j.get("veto")]
+    stale_hidden = 0
+    fresh: list[dict[str, Any]] = []
+    for job in scored:
+        if job_is_stale(job, today_d):
+            job["stale"] = True
+            stale_hidden += 1
+            continue
+        age = posting_age_days(job.get("postedAt"), today_d)
+        if age is not None and age <= RECENT_BOOST_DAYS:
+            job["matchScore"] = round(float(job.get("matchScore") or 0) + RECENT_BOOST, 2)
+            job.setdefault("matchReasons", []).append("recent")
+        elif age is not None and age <= SEMI_RECENT_BOOST_DAYS:
+            job["matchScore"] = round(float(job.get("matchScore") or 0) + SEMI_RECENT_BOOST, 2)
+            job.setdefault("matchReasons", []).append("recent")
+        fresh.append(job)
+    if include_stale:
+        scored = fresh + [j for j in scored if j.get("stale")]
+    else:
+        scored = fresh
     if query:
         q = query.lower()
         q_tokens = [t for t in q.replace("/", " ").split() if len(t) > 2]
@@ -116,10 +192,11 @@ def rank_corpus(
             job["matchScore"] = float(job.get("matchScore") or 0) + hits * 2
             if hits:
                 job.setdefault("matchReasons", []).append("query")
-    # Stable multi-pass sort: score desc, then most-recently-seen first, then title.
+    # Stable multi-pass sort: stale sinks to the bottom, then score desc,
+    # then most-recently-seen first, then title.
     scored.sort(key=lambda j: str(j.get("title") or ""))
     scored.sort(key=lambda j: str(j.get("lastSeen") or ""), reverse=True)
-    scored.sort(key=lambda j: -float(j.get("matchScore") or 0))
+    scored.sort(key=lambda j: (bool(j.get("stale")), -float(j.get("matchScore") or 0)))
     n = len(scored)
     k_eff = max(0, min(int(k), n))
     top = scored[:k_eff]
@@ -129,5 +206,6 @@ def rank_corpus(
         "showing": f"{k_eff} of {n}",
         "query": query or "",
         "shards": sorted(set(shard_files)),
+        "staleHidden": 0 if include_stale else stale_hidden,
         "jobs": top,
     }

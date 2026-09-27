@@ -87,9 +87,11 @@ Use [`helpers/stage-company.sh`](helpers/stage-company.sh) to mkdir + write skel
 ```bash
 python3 "$SUITE/skills/careers-discover/helpers/crawl-state.py" \
   --triage-dir "$TRIAGE" --company "$NAME"
-# After a successful extract (even truncated), stamp lastCrawl + hash:
+# After a successful extract (even truncated), stamp lastCrawl + hash.
+# Pass the listings JSON endpoint as --source-url so `network-jobs refresh`
+# can re-crawl this board later without a model in the loop.
 python3 "$SUITE/skills/careers-discover/helpers/crawl-state.py" \
-  --triage-dir "$TRIAGE" --company "$NAME" --stamp
+  --triage-dir "$TRIAGE" --company "$NAME" --stamp --source-url "$JOBS_JSON_URL"
 ```
 
 Compares listing-set hash to `companies.json`. Caps: **15 API pages**, **5 browser load-more pages**, 2000 listings. Fetch-log metadata is written per page by paginate (default). If `unchanged: true`, say so and **skip ingest** (delta is empty) — do not expire anything. If the hash changed, ingest is a fingerprint merge (new/changed rows only; expiry still requires `pagination.complete`).

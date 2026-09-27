@@ -10,14 +10,38 @@ from .locations import city_matches, location_buckets_for
 from .text import former_employer_match, tokenize
 
 
-def load_resume_keywords(text: str, limit: int = 40) -> list[str]:
-    from collections import Counter as C
+def name_tokens(profile: dict[str, Any] | None) -> set[str]:
+    """Tokens from the user's name, so résumé keywords don't echo "ada lovelace"."""
+    return set(tokenize(str((profile or {}).get("name") or "")))
+
+
+#: Generic résumé filler that pollutes keyword extraction without describing the
+#: actual work. Kept deliberately small; STOPWORDS covers articles/prepositions.
+RESUME_NOISE = frozenset({
+    "new", "novel", "various", "multiple", "many", "much", "several",
+    "work", "worked", "working", "works", "job", "role", "team", "teams",
+    "use", "used", "using", "usage", "via", "across", "within",
+    "including", "include", "etc", "highly", "strong", "proven",
+    "track", "record", "helped", "helping", "led", "leading",
+    "drive", "driving", "built", "building", "also", "well",
+    "day", "month", "year", "years", "end",
+})
+
+
+def load_resume_keywords(
+    text: str,
+    limit: int = 40,
+    exclude: set[str] | None = None,
+) -> list[str]:
     from .text import STOPWORDS
     import re
 
     words = [w.lower() for w in re.findall(r"[A-Za-z][A-Za-z0-9+\-/#]{2,}", text or "")]
-    words = [w for w in words if w not in STOPWORDS]
-    return [w for w, _ in C(words).most_common(limit)]
+    drop = set(STOPWORDS) | set(RESUME_NOISE)
+    if exclude:
+        drop |= {w.lower() for w in exclude}
+    words = [w for w in words if w not in drop]
+    return [w for w, _ in Counter(words).most_common(limit)]
 
 
 def _work_modes(prefs: dict[str, Any]) -> set[str]:
