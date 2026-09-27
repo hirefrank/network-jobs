@@ -16,6 +16,15 @@ UUID_RE = re.compile(
 # Our corpus ids look like "stripe-senior-backend-engineer-ab12"
 SLUG_ID_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+){2,}$")
 
+#: Placeholder "ids" some ATS payloads emit when they have no real id.
+#: Two distinct jobs sharing one must NOT fingerprint as the same posting,
+#: so these are treated as absent and fingerprinting falls back to
+#: company+title+location.
+PLACEHOLDER_ATS_IDS = frozenset({
+    "null", "none", "undefined", "n/a", "na", "unknown", "tbd", "todo",
+    "-", "--", "---", "?", "nil", "missing", "not set", "not applicable",
+})
+
 
 def location_key(job: dict[str, Any]) -> str:
     parsed = parse_locations(job)
@@ -41,6 +50,8 @@ def ats_id(job: dict[str, Any]) -> str | None:
         if value is None:
             continue
         text = collapse_ws(str(value))
+        if text.lower() in PLACEHOLDER_ATS_IDS:
+            continue
         if text and not text.lower().startswith("http"):
             return text
     value = job.get("id")
@@ -48,6 +59,8 @@ def ats_id(job: dict[str, Any]) -> str | None:
         return None
     text = collapse_ws(str(value))
     if not text or text.lower().startswith("http"):
+        return None
+    if text.lower() in PLACEHOLDER_ATS_IDS:
         return None
     if text.isdigit() and len(text) >= 3:
         return text

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
-import re
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from .dates import parse_date_flexible
+from .locations import BUCKET_ORDER
 from .paths import data_home
 from .prefs import load_resume_keywords, name_tokens, score_job
 
@@ -24,28 +25,9 @@ SEMI_RECENT_BOOST_DAYS = 30
 SEMI_RECENT_BOOST = 1.0
 
 
-def _parse_posted_date(raw: Any) -> date | None:
-    """Best-effort postedAt → date. ATS formats vary wildly; None when unknown."""
-    if not raw:
-        return None
-    s = str(raw).strip()
-    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", s)
-    if m:
-        try:
-            return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-        except ValueError:
-            return None
-    for fmt in ("%Y/%m/%d", "%m/%d/%Y", "%b %d, %Y", "%B %d, %Y"):
-        try:
-            return datetime.strptime(s[:24], fmt).date()
-        except ValueError:
-            continue
-    return None
-
-
 def posting_age_days(raw: Any, today: date | None = None) -> int | None:
     """Age in days of a postedAt/lastSeen-style value; None when unparseable."""
-    d = _parse_posted_date(raw)
+    d = parse_date_flexible(raw)
     if d is None:
         return None
     today = today or date.today()
@@ -94,7 +76,7 @@ def _iter_shards(corpus: Path, prefs: dict[str, Any], query: str | None) -> tupl
 
     files: list[Path] = []
     cats = wanted_cats or list(categories.keys())
-    locs = wanted_locs or ["nyc", "sf", "remote", "other"]
+    locs = wanted_locs or list(BUCKET_ORDER)
     sens = [s for s in wanted_sen if s in ("senior", "mid")] or ["senior", "mid"]
 
     for cat in cats:
@@ -107,9 +89,14 @@ def _iter_shards(corpus: Path, prefs: dict[str, Any], query: str | None) -> tupl
                 fname = info.get("file")
                 if fname:
                     files.append(corpus / fname)
-        # Hybrid NYC-or-Remote lives in both shards; also pull category file if no granular hits
-        if not files and meta.get("file"):
-            files.append(corpus / str(meta["file"]))
+
+    if not files:
+        # Hybrid NYC-or-Remote lives in both shards; when no granular shard
+        # matched, fall back to the whole-category files.
+        for cat in cats:
+            meta = categories.get(cat) or {}
+            if meta.get("file"):
+                files.append(corpus / str(meta["file"]))
 
     if not files:
         all_jobs = corpus / "jobs-all.json"
@@ -147,6 +134,7 @@ def rank_corpus(
     resume_text: str | None = None,
     include_stale: bool = False,
     today: date | str | None = None,
+    company_cap: int = 3,
 ) -> dict[str, Any]:
     root = data_home(data_dir)
     corpus = root / "corpus"
@@ -199,11 +187,24 @@ def rank_corpus(
     scored.sort(key=lambda j: (bool(j.get("stale")), -float(j.get("matchScore") or 0)))
     n = len(scored)
     k_eff = max(0, min(int(k), n))
-    top = scored[:k_eff]
+    # Top-K diversity: no single company can dominate the shortlist. Walk the
+    # ranked list in order and skip jobs past the per-company cap.
+    top: list[dict[str, Any]] = []
+    cap = max(0, int(company_cap or 0))
+    company_counts: dict[str, int] = {}
+    for job in scored:
+        if len(top) >= k_eff:
+            break
+        if cap:
+            key = str(job.get("company") or "").strip().lower() or str(job.get("ats") or "")
+            if company_counts.get(key, 0) >= cap:
+                continue
+            company_counts[key] = company_counts.get(key, 0) + 1
+        top.append(job)
     return {
         "k": k_eff,
         "n": n,
-        "showing": f"{k_eff} of {n}",
+        "showing": f"{len(top)} of {n}",
         "query": query or "",
         "shards": sorted(set(shard_files)),
         "staleHidden": 0 if include_stale else stale_hidden,

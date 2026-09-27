@@ -10,6 +10,12 @@ from typing import Any
 
 from .text import normalize_company, tokenize
 
+#: Score for a forwarder whose LinkedIn position is empty/unknown. Neutral
+#: (not 0): an unknown position is no evidence against them — they may still
+#: be a good forwarder — but it earns none of the overlap bonuses either.
+#: Behavior unchanged; the magic number just gets a name.
+UNKNOWN_POSITION_SCORE = 0.5
+
 
 def _person_name(row: dict[str, Any]) -> str:
     if row.get("name"):
@@ -23,7 +29,7 @@ def _score_forwarder(job: dict[str, Any], person: dict[str, Any]) -> float:
     job_tokens = set(tokenize(blob))
     pos_tokens = set(tokenize(position))
     if not pos_tokens:
-        return 0.5
+        return UNKNOWN_POSITION_SCORE
     overlap = len(job_tokens & pos_tokens)
     score = overlap * 2.0
     # Light bonuses for same function words
