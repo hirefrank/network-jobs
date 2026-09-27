@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .embeddings import maybe_update_embeddings
 from .fingerprint import fingerprint
 from .locations import location_buckets_for, primary_location_bucket
 from .text import normalize_company, slugify
@@ -221,4 +222,6 @@ def rebuild(
     summary["expired"] = bool(expire_company) and pagination_complete
     summary["expireCompany"] = expire_company or ""
     summary["paginationComplete"] = pagination_complete
+    # Semantic cache: embed only new/changed jobs; no-op when no provider.
+    summary["embeddings"] = maybe_update_embeddings(corpus, jobs)
     return summary

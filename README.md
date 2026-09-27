@@ -53,6 +53,7 @@ Daily use is **in the agent**. The CLI also covers install, update, doctor, rés
 - **Model choice (agnostic):** prefer a **stronger** model for career-page discovery; mid-tier is usually enough for local search and intro drafts.
 - **Refresh:** `network-jobs update`
 - **Health:** `network-jobs doctor`
+- **Semantic matching (optional):** `network-jobs embed-setup` installs fastembed (one-time ~60MB model) so `search`/`rank` also score résumé↔job similarity. Keyword scoring is unchanged when it's not installed.
 - **Data:** everything under `~/.network-jobs/` — no hosted API.
 
 ## Pipeline

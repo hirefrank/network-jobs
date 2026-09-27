@@ -378,3 +378,30 @@ Search ranker: `skills/network-jobs/helpers/rank-jobs.py` writes `search/ranked.
 - Recency boost: postings from the last 14 days get +2 (`matchReasons` gains
   `recent`), last 30 days get +1.
 
+### corpus/embeddings.json
+
+Optional semantic-matching cache, written by `rebuild`/`refresh` when an
+embedding provider is configured (`network-jobs embed-setup` installs
+fastembed, ~60MB one-time model download; a local Ollama is used if already
+running). Keyed by job fingerprint; re-embedded only for new/changed jobs, or
+all jobs when the model/recipe changes.
+
+```json
+{
+  "model": "BAAI/bge-small-en-v1.5",
+  "dims": 384,
+  "recipe": 1,
+  "vectors": {"<fingerprint>": [0.013, -0.22]}
+}
+```
+
+Scoring effects (all soft signals; nothing is a veto):
+
+- `resume-semantic` — cosine(résumé, job) mapped to +0–4, **replaces** the
+  keyword `resume` bonus (never stacks with it).
+- `query-semantic` — cosine(`--query`, job) mapped to +0–2, **additive** to the
+  lexical `query` hits.
+
+With no provider configured, scoring is byte-identical to keyword-only.
+`NJ_EMBED_PROVIDER=fastembed|ollama|none` overrides provider detection.
+
