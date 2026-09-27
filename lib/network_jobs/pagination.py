@@ -14,6 +14,7 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 from .inventory import upsert_inventory, write_summary_json
+from .fingerprint import fingerprint
 from .text import collapse_ws
 
 LIST_KEYS = (
@@ -300,6 +301,7 @@ def paginate(
     page_size: int = DEFAULT_PAGE_SIZE,
     fetch=None,
     source_url: str = "",
+    company: str = "",
 ) -> dict[str, Any]:
     fetch = fetch or fetch_json
     listings: list[dict[str, Any]] = []
@@ -317,6 +319,7 @@ def paginate(
         if q.get("offset", "").isdigit():
             offset = int(q["offset"])
     seen_urls: set[str] = set()
+    seen_fps: set[str] = set()
     fetch_log: list[dict[str, Any]] = []
 
     while True:
@@ -349,7 +352,20 @@ def paginate(
             item = normalize_listing(raw, source_url=source_url or (current or ""))
             if item:
                 page_listings.append(item)
-        listings.extend(page_listings)
+        # Drop repeats: a server that ignores invented page/cursor params would
+        # otherwise loop to max_pages staging the same jobs over and over.
+        new_listings = []
+        for item in page_listings:
+            fp = fingerprint(item, company=company or None)
+            if fp in seen_fps:
+                continue
+            seen_fps.add(fp)
+            new_listings.append(item)
+        if page_listings and not new_listings:
+            # Whole page was already seen — the "next" URL added nothing.
+            complete = True
+            break
+        listings.extend(new_listings)
         pages += 1
         last_count = len(page_listings)
         if len(listings) >= max_listings:

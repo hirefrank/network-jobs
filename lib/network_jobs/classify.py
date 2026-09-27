@@ -104,12 +104,12 @@ def classify_track(title: str, department: str = "") -> tuple[str, str, bool]:
         return "ic", "low", True
     if IC_MANAGER_RE.search(blob):
         return "ic", "high", False
-    manager = bool(PEOPLE_MANAGER_RE.search(blob) or (
-        GENERIC_MANAGER_RE.search(blob) and not IC_MANAGER_RE.search(blob)
-    ))
-    ic = bool(IC_RE.search(blob))
-    if PEOPLE_MANAGER_RE.search(blob) and not ic:
+    if PEOPLE_MANAGER_RE.search(blob):
+        # Explicit manager phrases ("Engineering Manager", "Director of
+        # Engineering") win over IC tokens like "engineer".
         return "manager", "high", False
+    manager = bool(GENERIC_MANAGER_RE.search(blob))
+    ic = bool(IC_RE.search(blob))
     if manager and ic:
         return "manager", "low", True
     if manager:

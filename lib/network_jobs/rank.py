@@ -116,7 +116,10 @@ def rank_corpus(
             job["matchScore"] = float(job.get("matchScore") or 0) + hits * 2
             if hits:
                 job.setdefault("matchReasons", []).append("query")
-    scored.sort(key=lambda j: (-float(j.get("matchScore") or 0), str(j.get("lastSeen") or ""), str(j.get("title") or "")))
+    # Stable multi-pass sort: score desc, then most-recently-seen first, then title.
+    scored.sort(key=lambda j: str(j.get("title") or ""))
+    scored.sort(key=lambda j: str(j.get("lastSeen") or ""), reverse=True)
+    scored.sort(key=lambda j: -float(j.get("matchScore") or 0))
     n = len(scored)
     k_eff = max(0, min(int(k), n))
     top = scored[:k_eff]

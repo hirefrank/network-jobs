@@ -181,6 +181,49 @@ class RankerTests(unittest.TestCase):
         self.assertLessEqual(ranked["k"], ranked["n"])
         self.assertLessEqual(len(ranked["jobs"]), 2)
 
+    def test_tie_break_prefers_most_recently_seen(self):
+        tmp = Path(tempfile.mkdtemp(prefix="nj-tie-"))
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        corpus = tmp / "corpus"
+        corpus.mkdir()
+        jobs = [
+            {
+                "id": "old", "title": "Senior Product Manager", "company": "Stripe",
+                "department": "Product", "category": "product", "location": "Remote",
+                "locationBucket": "remote", "seniority": "senior",
+                "url": "https://example.com/old", "lastSeen": "2026-09-10",
+            },
+            {
+                "id": "new", "title": "Senior Product Manager", "company": "Figma",
+                "department": "Product", "category": "product", "location": "Remote",
+                "locationBucket": "remote", "seniority": "senior",
+                "url": "https://example.com/new", "lastSeen": "2026-09-16",
+            },
+        ]
+        (corpus / "product-remote-senior.json").write_text(json.dumps(jobs, indent=2) + "\n")
+        (corpus / "manifest.json").write_text(json.dumps({
+            "lastUpdated": "2026-09-16T00:00:00Z",
+            "totalJobs": 2,
+            "categories": {
+                "product": {
+                    "count": 2,
+                    "file": "product.json",
+                    "byLocation": {
+                        "remote": {"senior": {"count": 2, "file": "product-remote-senior.json"}},
+                    },
+                },
+            },
+        }, indent=2) + "\n")
+        shutil.copy(FIXTURES / "preferences.json", tmp / "preferences.json")
+        (tmp / "resume").mkdir()
+        shutil.copy(FIXTURES / "resume-keywords.md", tmp / "resume" / "text.md")
+        result = rank_corpus(data_dir=tmp, k=2)
+        self.assertEqual(result["n"], 2)
+        scores = [j["matchScore"] for j in result["jobs"]]
+        self.assertEqual(scores[0], scores[1])
+        self.assertEqual(result["jobs"][0]["id"], "new")
+        self.assertEqual(result["jobs"][1]["id"], "old")
+
 
 class PaginationTests(unittest.TestCase):
     @classmethod
@@ -255,7 +298,8 @@ class PaginationTests(unittest.TestCase):
         self.assertGreaterEqual(result["pagination"]["pages"], 4)
         self.assertTrue(result["pagination"]["complete"])
         self.assertFalse(result["pagination"]["truncated"])
-        self.assertEqual(len(result["listings"]), 38)
+        # Fixture holds 38 rows but 3 are the same Senior PM posting (36 unique).
+        self.assertEqual(len(result["listings"]), 36)
         quiet = write_pagination(triage, result, company="FatBoard")
         self.assertTrue((triage / "index" / "pagination.json").is_file())
         inv = (triage / "INVENTORY.md").read_text()
@@ -275,11 +319,11 @@ class PaginationTests(unittest.TestCase):
         from network_jobs.pagination import paginate
 
         off = paginate(f"http://127.0.0.1:{self.port}/offset?offset=0&limit=10", max_pages=10, page_size=10)
-        self.assertEqual(len(off["listings"]), 38)
+        self.assertEqual(len(off["listings"]), 36)  # 38 rows, 36 unique
         self.assertIn(off["pagination"]["scheme"], {"offset", "link"})
         self.assertTrue(off["pagination"]["complete"])
         cur = paginate(f"http://127.0.0.1:{self.port}/cursor?cursor=0&limit=10", max_pages=10, page_size=10)
-        self.assertEqual(len(cur["listings"]), 38)
+        self.assertEqual(len(cur["listings"]), 36)  # 38 rows, 36 unique
         self.assertEqual(cur["pagination"]["scheme"], "cursor")
         self.assertTrue(cur["pagination"]["complete"])
 
@@ -291,6 +335,30 @@ class PaginationTests(unittest.TestCase):
         hybrid = [j for j in result["listings"] if j.get("locations")]
         self.assertTrue(hybrid)
         self.assertIn("Remote", hybrid[0]["locations"])
+
+    def test_repeated_page_stops_and_dedupes(self):
+        from network_jobs.pagination import paginate
+        from network_jobs.fingerprint import fingerprint
+
+        # Server ignores invented page params and returns the same full page.
+        jobs = [
+            {"title": f"Engineer {i}", "url": f"https://x.io/jobs/{i}", "location": "New York, NY"}
+            for i in range(60)
+        ]
+        payload = {"jobs": jobs}
+
+        def fake_fetch(url):
+            import json as _json
+            return payload, 200, _json.dumps(payload).encode()
+
+        result = paginate("https://x.io/api/jobs", fetch=fake_fetch, max_pages=5, page_size=50)
+        pag = result["pagination"]
+        self.assertLess(pag["pages"], 5)
+        self.assertTrue(pag["complete"])
+        self.assertFalse(pag["truncated"])
+        fps = [fingerprint(j) for j in result["listings"]]
+        self.assertEqual(len(fps), len(set(fps)))
+        self.assertEqual(len(result["listings"]), 60)
 
 
 class FingerprintExpiryTests(unittest.TestCase):
@@ -388,6 +456,15 @@ class ClassifierLocationTests(unittest.TestCase):
         self.assertEqual(em["category"], "engineering")
         self.assertEqual(em["track"], "manager")
         self.assertIn("track", em)
+
+    def test_explicit_manager_titles_are_high_confidence(self):
+        from network_jobs.classify import classify_track
+
+        self.assertEqual(classify_track("Engineering Manager"), ("manager", "high", False))
+        self.assertEqual(classify_track("Director of Engineering"), ("manager", "high", False))
+        # IC-flavored manager titles stay IC.
+        self.assertEqual(classify_track("Product Manager", "Product"), ("ic", "high", False))
+        self.assertEqual(classify_track("Staff Engineer"), ("ic", "high", False))
 
     def test_intern_and_staff_plus_signals(self):
         from network_jobs.classify import classify_job
@@ -523,6 +600,22 @@ class CrawlAndIntroTests(unittest.TestCase):
         self.assertEqual(len(stripe_pm["forwarders"]), 2)
         self.assertEqual(stripe_pm["forwarders"][0]["name"], "Jane Doe")
         self.assertEqual(stripe_pm["department"], "Product")
+
+    def test_rank_intros_sorts_by_match_score(self):
+        from network_jobs.intros import rank_intros
+
+        jobs = [
+            {"title": "Low Score Role", "company": "Stripe", "matchScore": 1.0, "status": "open",
+             "url": "https://stripe.com/jobs/low"},
+            {"title": "Top Role", "company": "Stripe", "matchScore": 9.5, "status": "open",
+             "url": "https://stripe.com/jobs/top"},
+        ]
+        connections = [
+            {"firstName": "Jane", "lastName": "Doe", "company": "Stripe", "position": "PM"},
+        ]
+        result = rank_intros(jobs, connections, k_roles=1, k_forwarders=1)
+        self.assertEqual(result["roles"][0]["title"], "Top Role")
+        self.assertEqual(result["fetchJdUrls"], ["https://stripe.com/jobs/top"])
 
     def test_rank_intros_helper(self):
         tmp = Path(tempfile.mkdtemp(prefix="nj-intro-"))

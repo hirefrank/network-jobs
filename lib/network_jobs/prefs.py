@@ -137,11 +137,9 @@ def score_job(
         else:
             score -= 2
             hard_fail = True
-    elif sen_prefs and seniority not in sen_prefs and not (
-        "senior" in sen_prefs and seniority == "senior"
-    ):
+    elif sen_prefs and seniority not in sen_prefs:
         hard_fail = True
-    elif sen_prefs and (seniority in sen_prefs or ("senior" in sen_prefs and seniority == "senior")):
+    elif sen_prefs and seniority in sen_prefs:
         score += 3
         reasons.append("seniority")
 

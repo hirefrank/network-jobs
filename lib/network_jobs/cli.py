@@ -129,6 +129,7 @@ def cmd_paginate(args: argparse.Namespace) -> int:
         max_pages=args.max_pages,
         max_listings=args.max_listings,
         source_url=url or str(args.input or ""),
+        company=args.company or "",
     )
     quiet = write_pagination(Path(args.triage_dir), result, company=args.company or "")
     _dump(quiet, args.verbose)

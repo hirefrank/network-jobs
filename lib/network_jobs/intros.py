@@ -55,6 +55,9 @@ def rank_intros(
     k_forwarders: int = 2,
 ) -> dict[str, Any]:
     open_jobs = [j for j in jobs if str(j.get("status") or "open") != "closed"]
+    # Ranked input is already score-ordered, but sort defensively so the
+    # function is correct on its own.
+    open_jobs.sort(key=lambda j: -float(j.get("matchScore") or 0))
     roles_out = []
     fetch_urls: list[str] = []
     for job in open_jobs[: max(0, k_roles)]:
