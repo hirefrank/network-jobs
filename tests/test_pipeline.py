@@ -1428,5 +1428,45 @@ class EmbeddingsTests(unittest.TestCase):
             self.assertFalse([r for r in reasons if "semantic" in r])
 
 
+class ConsumerCliTests(unittest.TestCase):
+    """Regression tests for the installed-CLI surface (bash dispatch).
+
+    Bug 1 (2026-09-28): `npx 'github:hirefrank/network-jobs#main' setup`
+    failed because bin/network-jobs computed ROOT from BASH_SOURCE[0]
+    without resolving the npm .bin symlink.
+    Bug 2 (2026-09-28): `network-jobs embed-setup` was documented and
+    implemented in the Python CLI but missing from the bash dispatch table.
+    """
+
+    def _run(self, argv, env=None):
+        import subprocess
+
+        e = dict(os.environ)
+        e["NETWORK_JOBS_HOME"] = str(Path(tempfile.mkdtemp(prefix="nj-cli-")))
+        if env:
+            e.update(env)
+        return subprocess.run(argv, capture_output=True, text=True, env=e,
+                              timeout=60)
+
+    def test_embed_setup_dispatched(self):
+        proc = self._run([str(ROOT / "bin" / "network-jobs"),
+                          "embed-setup", "--help"])
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("Usage: network-jobs embed-setup", proc.stdout)
+
+    def test_bin_resolves_npm_shim_symlink(self):
+        # Simulate npm's layout: node_modules/.bin/network-jobs ->
+        # ../pkg/bin/network-jobs, with pkg itself a symlink to the suite.
+        tmp = Path(tempfile.mkdtemp(prefix="nj-shim-"))
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        bin_dir = tmp / "node_modules" / ".bin"
+        bin_dir.mkdir(parents=True)
+        (tmp / "node_modules" / "pkg").symlink_to(ROOT, target_is_directory=True)
+        (bin_dir / "network-jobs").symlink_to("../pkg/bin/network-jobs")
+        proc = self._run([str(bin_dir / "network-jobs"), "which"])
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(f"suite={tmp}/node_modules/pkg", proc.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

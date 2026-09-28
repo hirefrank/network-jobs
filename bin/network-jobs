@@ -2,7 +2,17 @@
 # network-jobs — local CLI: setup/doctor/import plus day-to-day search, companies, refresh.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Resolve our own path through symlinks: npm/pnpm .bin shims (and the
+# ~/.local/bin launcher) are symlinks, and BASH_SOURCE[0] alone would point
+# at the link's directory instead of the suite.
+_SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$_SOURCE" ]]; do
+  _DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
+  _SOURCE="$(readlink "$_SOURCE")"
+  [[ "$_SOURCE" != /* ]] && _SOURCE="$_DIR/$_SOURCE"
+done
+ROOT="$(cd "$(dirname "$_SOURCE")/.." && pwd)"
+unset _SOURCE _DIR
 # shellcheck source=lib/agents.sh
 source "$ROOT/lib/agents.sh"
 
@@ -40,6 +50,10 @@ Commands:
 
   demo [-k N] [--company-cap N]
       Rank a fixed synthetic job set (no network, no disk writes)
+
+  embed-setup
+      Install fastembed + warm the embedding model (one time); enables
+      semantic resume<->job similarity in search/rank
 
   profile import <resume-file>
       Store résumé under ~/.network-jobs/resume/ (feeds profile + interview)
@@ -204,6 +218,19 @@ Examples:
 EOF
 }
 
+usage_embed_setup() {
+  cat <<'EOF'
+Usage: network-jobs embed-setup
+
+Install fastembed and download the embedding model (one time, ~60MB), then
+warm the model and refresh corpus embeddings. Enables the resume-semantic
+and query-semantic signals in search/rank. Keyword scoring is unchanged
+when embeddings are not installed.
+
+  --help, -h      Show this help
+EOF
+}
+
 usage_companies() {
   cat <<'EOF'
 Usage: network-jobs companies [--sort connections|name|crawl] [--json]
@@ -360,6 +387,7 @@ cmd_help() {
     import) usage_import ;;
     search) usage_search ;;
     demo) usage_demo ;;
+    embed-setup) usage_embed_setup ;;
     companies) usage_companies ;;
     refresh) usage_refresh ;;
     profile) usage_profile ;;
@@ -1026,6 +1054,14 @@ cmd_demo() {
   _lib_cli demo "$@"
 }
 
+cmd_embed_setup() {
+  if network_jobs_want_help "$@"; then
+    usage_embed_setup
+    return 0
+  fi
+  _lib_cli embed-setup "$@"
+}
+
 cmd_companies() {
   if network_jobs_want_help "$@"; then
     usage_companies
@@ -1058,6 +1094,7 @@ case "$cmd" in
   import) cmd_import "$@" ;;
   search) cmd_search "$@" ;;
   demo) cmd_demo "$@" ;;
+  embed-setup) cmd_embed_setup "$@" ;;
   companies) cmd_companies "$@" ;;
   refresh) cmd_refresh "$@" ;;
   profile) cmd_profile "$@" ;;
