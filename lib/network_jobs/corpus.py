@@ -101,9 +101,16 @@ def merge_jobs(
                 merged["firstSeen"] = prev.get("firstSeen") or today
             if prev.get("url") and not merged.get("url"):
                 merged["url"] = prev.get("url")
+            if not merged.get("lastSeen"):
+                # A rebuild batch without lastSeen isn't evidence the job was
+                # seen today; inherit the previous value so staleness math
+                # stays truthful.
+                merged["lastSeen"] = prev.get("lastSeen") or today
+            if not merged.get("postedAt") and prev.get("postedAt"):
+                merged["postedAt"] = prev.get("postedAt")
         else:
             merged.setdefault("firstSeen", today)
-        merged["lastSeen"] = merged.get("lastSeen") or today
+            merged["lastSeen"] = merged.get("lastSeen") or today
         merged["status"] = merged.get("status") or "open"
         if merged["status"] == "closed":
             merged["status"] = "open"

@@ -22,6 +22,47 @@ SF_CITY = {
     "san jose", "south bay", "redwood city", "menlo park", "cupertino",
     "san mateo", "foster city", "emeryville",
 }
+LA_CITY = {
+    "la", "los angeles", "los angeles ca", "santa monica", "culver city",
+    "pasadena", "burbank", "long beach", "el segundo", "manhattan beach",
+    "west hollywood", "glendale",
+}
+SEATTLE_CITY = {
+    "seattle", "seattle wa", "bellevue", "redmond", "kirkland", "tacoma",
+    "renton", "bothell",
+}
+AUSTIN_CITY = {
+    "austin", "austin tx", "round rock", "cedar park",
+}
+BOSTON_CITY = {
+    "boston", "boston ma", "cambridge", "somerville", "waltham", "watertown",
+}
+CHICAGO_CITY = {
+    "chicago", "chicago il", "evanston", "oak park",
+}
+DENVER_CITY = {
+    "denver", "denver co", "boulder", "aurora co",
+}
+DC_CITY = {
+    "washington dc", "district of columbia", "arlington", "arlington va",
+    "alexandria", "alexandria va", "bethesda", "tysons", "reston",
+    "washington d c",
+}
+#: All onsite metro buckets, most-specific first for matching.
+METRO_BUCKETS: list[tuple[str, set[str]]] = [
+    ("nyc", NYC_CITY),
+    ("sf", SF_CITY),
+    ("la", LA_CITY),
+    ("seattle", SEATTLE_CITY),
+    ("austin", AUSTIN_CITY),
+    ("boston", BOSTON_CITY),
+    ("chicago", CHICAGO_CITY),
+    ("denver", DENVER_CITY),
+    ("dc", DC_CITY),
+]
+#: Canonical bucket order for shard reads and primary-bucket preference.
+BUCKET_ORDER = ["nyc", "sf", "la", "seattle", "austin", "boston", "chicago",
+                "denver", "dc", "remote", "other"]
 REMOTE_MARKERS = (
     "remote", "distributed", "work from home", "wfh", "anywhere",
     "remote-first", "remote first", "remote us", "remote-usa", "us remote",
@@ -45,23 +86,20 @@ def _city_bucket(text: str) -> str | None:
     n = _norm_place(text)
     if not n:
         return None
-    compact = n.replace(",", " ")
-    compact = collapse_ws(compact)
-    if compact in NYC_CITY or n in NYC_CITY:
-        return "nyc"
-    if compact in SF_CITY or n in SF_CITY:
-        return "sf"
-    for token, bucket, aliases in (
-        ("nyc", "nyc", NYC_CITY),
-        ("sf", "sf", SF_CITY),
-    ):
-        del token
-        if any(alias in n for alias in aliases):
+    compact = collapse_ws(n.replace(",", " "))
+    # Exact matches first, most-specific metros first.
+    for bucket, aliases in METRO_BUCKETS:
+        if compact in aliases or n in aliases:
             return bucket
-    if re.search(r"\bnew york\b", n) or re.search(r"\bnyc\b", n):
-        return "nyc"
-    if re.search(r"\bsan francisco\b", n) or re.search(r"\bbay area\b", n) or re.search(r"\bpalo alto\b", n):
-        return "sf"
+    # Then in-string matches; tiny aliases ("la", "dc") need word boundaries
+    # so "Atlanta" doesn't become Los Angeles.
+    for bucket, aliases in METRO_BUCKETS:
+        for alias in aliases:
+            if len(alias) <= 2:
+                if re.search(r"\b" + re.escape(alias) + r"\b", n):
+                    return bucket
+            elif alias in n:
+                return bucket
     return None
 
 
@@ -154,7 +192,7 @@ def location_buckets_for(job: dict[str, Any]) -> list[str]:
 
 def primary_location_bucket(job: dict[str, Any]) -> str:
     buckets = location_buckets_for(job)
-    for preferred in ("nyc", "sf", "remote", "other"):
+    for preferred in BUCKET_ORDER:
         if preferred in buckets:
             return preferred
     return buckets[0]

@@ -120,9 +120,10 @@ network-jobs reset [--data] [--purge-cache] [--yes]
 network-jobs uninstall [--yes]    # alias for reset --data
 
 # Day-to-day (also available in your agent):
-network-jobs search [--query "..."] [-k N] [--include-stale]
+network-jobs search [--query "..."] [-k N] [--company-cap N] [--include-stale]
 network-jobs companies [--sort connections|name|crawl]
 network-jobs refresh [--company NAME] [--limit N]
+network-jobs demo [-k N] [--company-cap N]   # synthetic jobs, no network/disk
 ```
 
 Skills self-describe for routing. `network-jobs routing` prints an optional snippet for a project instruction file.

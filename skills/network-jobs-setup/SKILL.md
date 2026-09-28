@@ -55,7 +55,7 @@ Always read [SCHEMA.md](../../SCHEMA.md) first.
    | Dimension | Examples |
    |-----------|----------|
    | Work mode | remote / hybrid / onsite — and if hybrid/onsite, **where** (never “any office”) |
-   | Location | cities → map to `nyc` \| `sf` \| `remote` \| `other` when clear; fill `onsiteLocations` for in-person willingness |
+   | Location | cities → map to a corpus location bucket (`nyc`, `sf`, `la`, `seattle`, `austin`, `boston`, `chicago`, `denver`, `dc`, `remote`, `other`) when clear; fill `onsiteLocations` for in-person willingness |
    | Role category | from the 15 corpus categories, biased by résumé |
    | Seniority | senior / mid |
    | Track | `ic` / `manager` / `either` |

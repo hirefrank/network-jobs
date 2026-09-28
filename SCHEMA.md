@@ -86,7 +86,7 @@ Search and discovery defaults from a **résumé-grounded** agent interview (not 
 | Field | Meaning |
 |-------|---------|
 | `workModes` | `remote` \| `hybrid` \| `onsite` (multi-select) |
-| `locationBuckets` | Corpus buckets to prefer: `nyc` \| `sf` \| `remote` \| `other` |
+| `locationBuckets` | Corpus buckets to prefer — see Location buckets below (`nyc`, `sf`, `la`, `seattle`, `austin`, `boston`, `chicago`, `denver`, `dc`, `remote`, `other`) |
 | `locations` | Free-text places the user cares about (display / soft filter) |
 | `onsiteLocations` | Where onsite/hybrid is acceptable. **Required whenever `workModes` includes `hybrid` or `onsite`.** Never treat “open to onsite” as every office worldwide — scope it to these places (and matching `locationBuckets`). |
 | `categories` | Preferred role categories (same 15 as corpus) |
@@ -277,13 +277,15 @@ Verbatim capture of each fetch/browser snapshot **before** presenting results to
   "externalId": "123",
   "status": "open",
   "salary": { "min": 180000, "max": 250000 },
-  "postedAt": "2025-12-15T00:00:00Z",
+  "postedAt": "2025-12-15",
   "firstSeen": "2026-07-08",
   "lastSeen": "2026-07-08"
 }
 ```
 
-Identity is **`fingerprint`**, not URL: `id:{company}:{atsId}` when `externalId` is known, otherwise `fp:{company}:{sha1(title+locations)}`. Rebuild merges on fingerprint (incoming wins, `firstSeen` preserved). `status` is `open` | `closed`. Closed jobs stay in `jobs-all.json` but are omitted from searchable shards.
+Salary is `{ "min", "max" }` in annual USD with optional `"currency"` (default USD) and optional `"unit": "hourly"` — hourly rates are flagged, never annualized. String salaries (`"$150k–$180k"`, `"up to $200k"`, `"$75/hr"`) are parsed at ingest (`lib/network_jobs/salary.py`); dict salaries pass through. `postedAt` is canonicalized to `YYYY-MM-DD` at ingest when the ATS format parses, otherwise kept raw.
+
+Identity is **`fingerprint`**, not URL: `id:{company}:{atsId}` when `externalId` is known, otherwise `fp:{company}:{sha1(title+locations)}`. Placeholder ATS ids (`null`, `n/a`, `unknown`, `tbd`, `-`, …) are treated as absent so distinct jobs never collide on a shared placeholder. Rebuild merges on fingerprint: incoming wins, but `firstSeen` is preserved, `lastSeen` is inherited from the previous record when the incoming batch lacks it (a batch without `lastSeen` is not evidence the job was seen today), and a previous `postedAt` is kept when incoming lacks one. `status` is `open` | `closed`. Closed jobs stay in `jobs-all.json` but are omitted from searchable shards.
 
 **Expiry / close:** when ingesting a company, unseen open jobs for that company are marked `closed` **only if** triage `pagination.complete` is true. Incomplete crawls (truncated, cap hit, missing next page) must not expire anything.
 
@@ -291,12 +293,21 @@ Identity is **`fingerprint`**, not URL: `id:{company}:{atsId}` when `externalId`
 
 `engineering` | `product` | `design` | `data` | `ai-ml` | `sales` | `marketing` | `customer-success` | `operations` | `finance` | `people` | `legal` | `it-security` | `retail` | `other`
 
+Adjacent categories count as a soft match via `CATEGORY_AFFINITY` (`lib/network_jobs/classify.py`): when a seeker prefers `engineering` but the job is classified `ai-ml` or `data`, scoring adds +2 with reason `category-affinity` instead of the +5 `category` exact match — and, unlike an unrelated category, never hard-fails the job. Affinity is directional (seeker preference → acceptable job category), e.g. a `marketing` seeker accepts `product` roles but a `product` seeker does not get `marketing` roles boosted.
+
 ### Location buckets
 
 | Bucket | Meaning |
 |--------|---------|
 | `nyc` | New York City metro |
 | `sf` | San Francisco / Bay Area |
+| `la` | Los Angeles metro |
+| `seattle` | Seattle metro (incl. Bellevue, Redmond) |
+| `austin` | Austin metro |
+| `boston` | Boston metro (incl. Cambridge) |
+| `chicago` | Chicago metro |
+| `denver` | Denver metro (incl. Boulder) |
+| `dc` | Washington, DC metro (incl. Arlington, Alexandria) |
 | `remote` | Fully remote (or remote-first) |
 | `other` | Everything else |
 
@@ -377,4 +388,7 @@ Search ranker: `skills/network-jobs/helpers/rank-jobs.py` writes `search/ranked.
   `--include-stale` to see them (they carry `"stale": true` and sort last).
 - Recency boost: postings from the last 14 days get +2 (`matchReasons` gains
   `recent`), last 30 days get +1.
+- Company cap: at most 3 jobs per company in the top-K shortlist
+  (`--company-cap N` on `rank`/`search`; 0 disables), so one big board can't
+  crowd out the shortlist.
 

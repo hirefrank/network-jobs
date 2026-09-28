@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-from .classify import classify_job
+from .classify import CATEGORY_AFFINITY, classify_job
 from .locations import city_matches, location_buckets_for
 from .text import former_employer_match, tokenize
 
@@ -135,9 +135,15 @@ def score_job(
 
     cats = [str(c).lower() for c in (prefs.get("categories") or [])]
     if cats:
-        if classified.get("category") in cats:
+        job_cat = str(classified.get("category") or "")
+        if job_cat in cats:
             score += 5
             reasons.append("category")
+        elif any(job_cat in CATEGORY_AFFINITY.get(c, ()) for c in cats):
+            # Adjacent category: keep the job in the running with a smaller
+            # bonus, but never hard-fail it the way an unrelated category does.
+            score += 2
+            reasons.append("category-affinity")
         else:
             score -= 1
             hard_fail = True

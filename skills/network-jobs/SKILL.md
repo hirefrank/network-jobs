@@ -37,7 +37,7 @@ cat "$DATA/corpus/manifest.json"
 | `search/ranked.json` | Top-K from `helpers/rank-jobs.py` — read this, not whole shards |
 | `companies/companies.json` | Connection graph (for “who do I know?”) |
 
-**Location buckets:** `nyc`, `sf`, `remote`, `other`  
+**Location buckets:** `nyc`, `sf`, `la`, `seattle`, `austin`, `boston`, `chicago`, `denver`, `dc`, `remote`, `other`  
 **Seniority buckets:** `senior`, `mid`  
 **Categories:** see reference.md
 
@@ -116,7 +116,11 @@ python3 "$SUITE/skills/network-jobs/helpers/rank-jobs.py" --k 25 --query "$USER_
 
 Shortcut: `network-jobs search --query "..." -k 25` runs the ranker, writes
 `search/ranked.json`, and prints a human-readable list in one step. Add
-`--include-stale` to surface stale postings. `network-jobs refresh` re-crawls
+`--include-stale` to surface stale postings; `--company-cap N` limits how many
+jobs one company can take in the shortlist (default 3, 0 disables).
+`network-jobs demo` ranks a fixed synthetic job set with no network or disk
+writes — a quick end-to-end check of the scoring pipeline (exact category,
+category affinity, company cap). `network-jobs refresh` re-crawls
 known boards (oldest first) and stages new matches under `triage/`.
 
 ### Pattern B2: Broad queries
