@@ -1575,5 +1575,88 @@ class ConsumerCliTests(unittest.TestCase):
         self.assertNotIn("pip install", err.getvalue())
 
 
+class BuildPackTests(unittest.TestCase):
+    CSV = (
+        "First Name,Last Name,Email Address,Company,Position,Connected On\n"
+        'Ada,Lovelace,ada@example.com,Acme Inc,Senior Product Manager,01 Jan 2024\n'
+        'Grace,Hopper,grace@example.com,Acme Corp,Product Manager,02 Feb 2024\n'
+        'Alan,Turing,alan@example.com,Acme LLC,Engineering Manager,03 Mar 2024\n'
+        'Katherine,Johnson,kj@example.com,Globex,CEO,04 Apr 2024\n'
+        'Margaret,Hamilton,mh@example.com,Self-employed,Founder,05 May 2024\n'
+        'Anita,Borg,ab@example.com,,Designer,06 Jun 2024\n'
+    )
+
+    def _csv_file(self, tmp):
+        p = Path(tmp) / "Connections.csv"
+        p.write_text(self.CSV, encoding="utf-8")
+        return p
+
+    def test_pack_has_no_personal_data(self):
+        from network_jobs.pack import build_pack
+        with tempfile.TemporaryDirectory() as tmp:
+            pack = build_pack(self._csv_file(tmp), label="Test Owner",
+                              generated_on="2026-09-28")
+        dump = json.dumps(pack)
+        for needle in ("Ada", "Lovelace", "Grace", "Hopper", "Alan", "Turing",
+                       "Katherine", "Johnson", "Margaret", "Hamilton",
+                       "example.com", "linkedin.com", "2024", "Test OwnerX"):
+            self.assertNotIn(needle, dump)
+        self.assertNotIn("@", dump)  # no emails or URLs survived
+        # ...but the label itself is fine
+        self.assertEqual(pack["label"], "Test Owner")
+
+    def test_company_aggregation_and_normalization(self):
+        from network_jobs.pack import build_pack
+        with tempfile.TemporaryDirectory() as tmp:
+            pack = build_pack(self._csv_file(tmp), generated_on="2026-09-28")
+        by_slug = {c["slug"]: c for c in pack["companies"]}
+        # Acme Inc + Acme Corp + Acme LLC normalize together
+        self.assertEqual(by_slug["acme"]["connectionCount"], 3)
+        self.assertEqual(by_slug["globex"]["connectionCount"], 1)
+        # ignored + company-less rows never appear
+        self.assertNotIn("self-employed", by_slug)
+        self.assertEqual(pack["totalConnections"], 4)
+
+    def test_title_threshold(self):
+        from network_jobs.pack import build_pack
+        with tempfile.TemporaryDirectory() as tmp:
+            pack = build_pack(self._csv_file(tmp), generated_on="2026-09-28")
+        by_slug = {c["slug"]: c for c in pack["companies"]}
+        # 3 connections -> titles published
+        self.assertIn("topTitles", by_slug["acme"])
+        self.assertTrue(any("product manager" in t for t in by_slug["acme"]["topTitles"]))
+        # 1 connection -> count only, no titles (lone CEO stays anonymous)
+        self.assertNotIn("topTitles", by_slug["globex"])
+
+    def test_zip_input_and_cli(self):
+        import zipfile
+        from network_jobs import pack as pack_mod
+        with tempfile.TemporaryDirectory() as tmp:
+            zp = Path(tmp) / "linkedin-export.zip"
+            with zipfile.ZipFile(zp, "w") as zf:
+                zf.writestr("Connections.csv", self.CSV)
+            pack = pack_mod.build_pack(zp, label="Zip Owner", generated_on="2026-09-28")
+            self.assertEqual(pack["totalConnections"], 4)
+            out = Path(tmp) / "out.json"
+            pack_mod.write_pack(pack, out)
+            self.assertTrue(out.is_file())
+            # CLI end to end
+            rc = helper_main(["build-pack", str(zp), "--label", "Cli Owner",
+                              "--out", str(Path(tmp) / "cli.json")])
+            self.assertEqual(rc, 0)
+            cli_pack = json.loads((Path(tmp) / "cli.json").read_text())
+            self.assertEqual(cli_pack["label"], "Cli Owner")
+            self.assertNotIn("@", json.dumps(cli_pack))
+
+    def test_min_count(self):
+        from network_jobs.pack import build_pack
+        with tempfile.TemporaryDirectory() as tmp:
+            pack = build_pack(self._csv_file(tmp), min_count=2,
+                              generated_on="2026-09-28")
+        slugs = {c["slug"] for c in pack["companies"]}
+        self.assertIn("acme", slugs)
+        self.assertNotIn("globex", slugs)
+
+
 if __name__ == "__main__":
     unittest.main()

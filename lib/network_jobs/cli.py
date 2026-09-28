@@ -876,7 +876,35 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--json", action="store_true", help="print the report as JSON")
     d.set_defaults(func=cmd_doctor)
 
+    bp = sub.add_parser(
+        "build-pack",
+        help="build a publishable company-aggregated network pack from a LinkedIn export",
+    )
+    bp.add_argument("input", help="LinkedIn Connections.csv or .zip export")
+    bp.add_argument("--label", default="",
+                    help="pack owner label, e.g. 'Frank Harris'")
+    bp.add_argument("--out", default="",
+                    help="output JSON path (default: <label>-network-pack-<date>.json)")
+    bp.add_argument("--min-count", type=int, default=1,
+                    help="drop companies with fewer connections")
+    bp.set_defaults(func=cmd_build_pack)
+
     return p
+
+
+def cmd_build_pack(args: argparse.Namespace) -> int:
+    from .pack import build_pack, default_pack_path, write_pack
+
+    pack = build_pack(
+        args.input,
+        label=getattr(args, "label", "") or "",
+        min_count=int(getattr(args, "min_count", 1) or 1),
+    )
+    out = getattr(args, "out", "") or default_pack_path(pack["label"], pack["generatedAt"])
+    write_pack(pack, out)
+    print(f"pack: {pack['totalConnections']} connections -> "
+          f"{len(pack['companies'])} companies -> {out}")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
