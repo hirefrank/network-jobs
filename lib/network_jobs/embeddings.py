@@ -90,6 +90,7 @@ class FastEmbedProvider:
         from fastembed import TextEmbedding  # noqa: F401
 
         self._model = None
+        self.last_error: str | None = None
 
     def _load(self):
         if self._model is None:
@@ -108,7 +109,8 @@ class FastEmbedProvider:
                     continue
                 out.extend([list(map(float, v)) for v in model.embed(batch)])
             return out or None
-        except Exception:
+        except Exception as e:
+            self.last_error = f"{type(e).__name__}: {e}"[:300]
             return None
 
 
@@ -121,6 +123,7 @@ class OllamaProvider:
         self.base = base.rstrip("/")
         self.model = ""
         self.dims = 0
+        self.last_error: str | None = None
 
     def available(self) -> bool:
         try:
@@ -159,7 +162,8 @@ class OllamaProvider:
                 vecs = data.get("embeddings") or []
                 out.extend([[float(x) for x in v] for v in vecs])
             return out or None
-        except Exception:
+        except Exception as e:
+            self.last_error = f"{type(e).__name__}: {e}"[:300]
             return None
 
 

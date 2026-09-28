@@ -724,6 +724,20 @@ cmd_doctor() {
     fi
   fi
 
+  # Embeddings (round 5): provider + cache coverage from the Python CLI.
+  echo
+  local _emb_json
+  _emb_json="$(PYTHONPATH="$ROOT/lib${PYTHONPATH:+:$PYTHONPATH}" python3 -m network_jobs.cli doctor --json 2>/dev/null)" || _emb_json=""
+  if [[ -n "$_emb_json" ]]; then
+    printf '%s' "$_emb_json" | jq -r '
+      (if .provider then "embeddings: \(.provider) (\(.model), \(.dims)d)"
+       else "embeddings: not configured (keyword scoring only)\n  run `network-jobs embed-setup` to enable semantic matching" end),
+      (if .embeddingsFile then "cache: \(.vectorsCached) vectors, model=\(.cacheModel), coverage \((.coverage * 100 | round))% of \(.corpusJobs) corpus jobs"
+       else "cache: none (run rebuild or refresh with a provider configured)" end)'
+  else
+    echo "embeddings: status unavailable"
+  fi
+
   echo
   echo "==> Skill links"
   local a_name a_dir a_hint skill linked

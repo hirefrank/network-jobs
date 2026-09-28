@@ -1520,6 +1520,60 @@ class ConsumerCliTests(unittest.TestCase):
         out = json.loads((data / "search" / "intros.json").read_text())
         self.assertEqual(out["kRoles"], 2)
 
+    def test_doctor_reports_embeddings_unconfigured(self):
+        # Bug (2026-09-28): the bash `doctor` never surfaced the Python
+        # doctor's embedding provider + cache section.
+        import subprocess
+
+        data = Path(tempfile.mkdtemp(prefix="nj-doc-"))
+        for p in ("connections", "companies", "config", "triage", "corpus",
+                  "logs"):
+            (data / p).mkdir()
+        (data / "profile.json").write_text(
+            json.dumps({"name": "Test User", "email": "t@example.com"}))
+        env = dict(os.environ, NETWORK_JOBS_HOME=str(data),
+                   NJ_EMBED_PROVIDER="none")
+        proc = subprocess.run([str(ROOT / "bin" / "network-jobs"), "doctor"],
+                              capture_output=True, text=True, env=env,
+                              timeout=60)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("embeddings: not configured (keyword scoring only)",
+                      proc.stdout)
+        self.assertIn("cache: none", proc.stdout)
+
+    def test_embed_setup_warmup_failure_reports_reason(self):
+        # Bug (2026-09-28): a detected-but-broken provider (e.g. model
+        # download blocked) fell through to "fastembed is not installed",
+        # sending the user to reinstall instead of reporting the cause.
+        import argparse
+        import contextlib
+        import io
+
+        from network_jobs import cli as py_cli
+        from network_jobs import embeddings as emb_mod
+
+        class BrokenProvider:
+            name = "fastembed"
+            model = "BAAI/bge-small-en-v1.5"
+            dims = 384
+            last_error = "InvalidURL: Invalid port: ':1]'"
+
+            def embed(self, texts):
+                return None
+
+        real = emb_mod.get_provider
+        emb_mod.get_provider = lambda: BrokenProvider()
+        try:
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                rc = py_cli.cmd_embed_setup(argparse.Namespace())
+        finally:
+            emb_mod.get_provider = real
+        self.assertEqual(rc, 1)
+        self.assertIn("warmup", err.getvalue())
+        self.assertIn("InvalidURL", err.getvalue())
+        self.assertNotIn("pip install", err.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

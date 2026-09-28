@@ -666,6 +666,22 @@ def cmd_embed_setup(args: argparse.Namespace) -> int:
                 f"model={provider.model} dims={provider.dims}"
             )
             return 0
+        if provider.name == "fastembed":
+            # Reinstalling won't fix a detected-but-broken provider (e.g. the
+            # model download was blocked); report the cause instead.
+            reason = getattr(provider, "last_error", None)
+            print(
+                "error: provider fastembed detected but a warmup embed failed.",
+                file=sys.stderr,
+            )
+            if reason:
+                print(f"  reason: {reason}", file=sys.stderr)
+            print(
+                "  Check network/proxy settings, then re-run "
+                "`network-jobs embed-setup`.",
+                file=sys.stderr,
+            )
+            return 1
         print(
             f"warning: provider {provider.name} detected but a warmup "
             "embed failed; falling back to fastembed setup",
