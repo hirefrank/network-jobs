@@ -1467,6 +1467,24 @@ class ConsumerCliTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn(f"suite={tmp}/node_modules/pkg", proc.stdout)
 
+    def test_import_is_quiet(self):
+        # parse-linkedin.sh prints one summary line; detail goes to the log file.
+        import subprocess
+
+        tmp = Path(tempfile.mkdtemp(prefix="nj-import-"))
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        helper = (ROOT / "skills" / "network-jobs-import" / "helpers"
+                  / "parse-linkedin.sh")
+        proc = subprocess.run(
+            ["bash", str(helper), str(FIXTURES / "Connections.csv"),
+             "--out", str(tmp)],
+            capture_output=True, text=True, timeout=60)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        lines = [l for l in proc.stdout.strip().splitlines() if l.strip()]
+        self.assertEqual(len(lines), 1, proc.stdout)
+        self.assertTrue(lines[0].startswith("import: "), proc.stdout)
+        self.assertEqual(len(list((tmp / "logs").glob("import-*.json"))), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

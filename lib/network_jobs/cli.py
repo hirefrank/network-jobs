@@ -678,8 +678,17 @@ def cmd_embed_setup(args: argparse.Namespace) -> int:
     ).returncode
     if rc != 0:
         print(
-            "pip install failed; run it yourself, then re-run "
-            "`network-jobs embed-setup`",
+            "pip install failed; install fastembed with this Python "
+            f"({sys.executable}), then re-run `network-jobs embed-setup`",
+            file=sys.stderr,
+        )
+        print(
+            "On Debian/Ubuntu (externally managed Python, PEP 668) the "
+            "supported routes are a virtualenv, pipx, or:",
+            file=sys.stderr,
+        )
+        print(
+            "  python3 -m pip install --break-system-packages fastembed",
             file=sys.stderr,
         )
         return 1

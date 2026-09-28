@@ -632,6 +632,8 @@ cmd_doctor() {
   done
   if command -v agent-browser >/dev/null 2>&1; then
     echo "OK  agent-browser"
+  elif [[ -f "$DATA_HOME/config/no-browser" ]]; then
+    echo "OK  agent-browser skipped (setup --no-browser)"
   else
     echo "WARN agent-browser missing — network-jobs update   (or: npm i -g agent-browser)"
   fi

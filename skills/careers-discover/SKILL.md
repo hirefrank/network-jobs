@@ -30,7 +30,7 @@ Read [SCHEMA.md](../../SCHEMA.md) first. Pattern inspired by Provenance `source-
 ## Workflow
 
 ```bash
-DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
+DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"  # always resolve from the env; never export a literal DATA
 SUITE="$(cat "$DATA/suite-root" 2>/dev/null || true)"
 SUITE="${NETWORK_JOBS_SUITE:-${SUITE:-}}"
 ```
@@ -101,7 +101,7 @@ Compares listing-set hash to `companies.json`. Caps: **15 API pages**, **5 brows
 After `index/listings.json` is written, run — do **not** score the board in the model:
 
 ```bash
-DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
+DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"  # always resolve from the env; never export a literal DATA
 SUITE="$(cat "$DATA/suite-root" 2>/dev/null || true)"
 SUITE="${NETWORK_JOBS_SUITE:-${SUITE:-}}"
 python3 "$SUITE/skills/careers-discover/helpers/match-prefs.py" \

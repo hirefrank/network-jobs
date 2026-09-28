@@ -104,7 +104,7 @@ Always read [SCHEMA.md](../../SCHEMA.md) first.
 ## Checks
 
 ```bash
-DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
+DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"  # always resolve from the env; never export a literal DATA
 ls -la "$DATA"
 cat "$DATA/profile.json"
 cat "$DATA/preferences.json" 2>/dev/null || true

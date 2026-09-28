@@ -24,7 +24,7 @@ Read [SCHEMA.md](../../SCHEMA.md) first.
 2. **Run the parser** (deterministic — do not reimplement CSV parsing in prose):
 
 ```bash
-DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
+DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"  # always resolve from the env; never export a literal DATA
 # Prefer the CLI when available:
 network-jobs import "/path/to/linkedin.zip"
 

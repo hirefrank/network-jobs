@@ -19,7 +19,7 @@ Read [SCHEMA.md](../../SCHEMA.md) first. For category mapping details see [refer
 - This suite has **no hosted API**. Every read is a local file; never fetch a remote job export.
 
 ```bash
-DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
+DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"  # always resolve from the env; never export a literal DATA
 cat "$DATA/profile.json"
 cat "$DATA/corpus/manifest.json"
 ```
@@ -46,7 +46,7 @@ cat "$DATA/corpus/manifest.json"
 **First step for all patterns:** load profile + preferences + manifest.
 
 ```bash
-DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
+DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"  # always resolve from the env; never export a literal DATA
 jq -r '"\(.name)|\(.title)|\(.company)|\(.email)"' "$DATA/profile.json"
 jq . "$DATA/preferences.json" 2>/dev/null || echo "(no preferences yet)"
 jq . "$DATA/corpus/manifest.json"
@@ -104,7 +104,7 @@ Mention once when defaults applied: e.g. `Using your prefs: remote + NYC, produc
 2. Run the local ranker — do **not** load whole shards into context:
 
 ```bash
-DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
+DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"  # always resolve from the env; never export a literal DATA
 SUITE="$(cat "$DATA/suite-root" 2>/dev/null || true)"
 SUITE="${NETWORK_JOBS_SUITE:-${SUITE:-}}"
 python3 "$SUITE/skills/network-jobs/helpers/rank-jobs.py" --k 25 --query "$USER_QUERY"

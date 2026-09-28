@@ -148,8 +148,10 @@ Skills self-describe for routing. `network-jobs routing` prints an optional snip
 ```bash
 export NETWORK_JOBS_HOME=/tmp/nj-test
 npx --yes 'github:hirefrank/network-jobs#main' setup --agent auto --no-browser
-npx --yes 'github:hirefrank/network-jobs#main' import ./fixtures/Connections.csv
-python3 tests/test_pipeline.py   # prefs, ranker, pagination, fingerprint, classifier, crawl, intros
+export PATH="$HOME/.local/bin:$PATH"   # if setup just installed the launcher there
+SUITE="$(network-jobs which | sed -n 's/^suite=//p')"   # fixtures ship in the suite
+network-jobs import "$SUITE/fixtures/Connections.csv"
+python3 "$SUITE/tests/test_pipeline.py"   # prefs, ranker, pagination, fingerprint, classifier, crawl, intros
 ```
 
 ## Decommissioning the old Workers app

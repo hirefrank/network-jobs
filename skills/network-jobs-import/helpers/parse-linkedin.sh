@@ -222,5 +222,8 @@ summary = {
     ],
 }
 (out / "logs" / f"import-{ts}.json").write_text(json.dumps(summary, indent=2) + "\n")
-print(json.dumps(summary, indent=2))
+# Quiet by default: one line on stdout, full detail in the log file.
+print(f"import: {len(kept_connections)} connections kept "
+      f"({ignored} ignored), {len(companies)} companies "
+      f"-> logs/import-{ts}.json")
 PY

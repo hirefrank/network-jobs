@@ -151,6 +151,13 @@ mkdir -p \
   "$DATA_HOME/resume" \
   "$DATA_HOME/logs"
 
+# Remember an explicit --no-browser so doctor doesn't nag about it later.
+if [[ "$WITH_BROWSER" -eq 0 ]]; then
+  touch "$DATA_HOME/config/no-browser"
+else
+  rm -f "$DATA_HOME/config/no-browser"
+fi
+
 ASSET_DIR="$SKILLS_SRC/network-jobs-import/assets"
 for f in companies-to-ignore.json company-words-to-ignore.json company-overrides.json; do
   if [[ ! -f "$DATA_HOME/config/$f" && -f "$ASSET_DIR/$f" ]]; then

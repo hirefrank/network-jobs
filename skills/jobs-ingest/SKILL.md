@@ -80,7 +80,7 @@ Honor `preferences.onsiteLocations` when matching hybrid/onsite (explicit cities
 ## Helper
 
 ```bash
-DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
+DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"  # always resolve from the env; never export a literal DATA
 SUITE="$(cat "$DATA/suite-root" 2>/dev/null || true)"
 SUITE="${NETWORK_JOBS_SUITE:-${SUITE:-}}"
 python3 "$SUITE/skills/jobs-ingest/helpers/classify-listings.py" \

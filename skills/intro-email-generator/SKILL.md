@@ -40,7 +40,7 @@ Gather before generating:
 - **Ranked intros** — run the helper first (joins **full** `connections.json`, not the 10-person sample):
 
 ```bash
-DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
+DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"  # always resolve from the env; never export a literal DATA
 SUITE="$(cat "$DATA/suite-root" 2>/dev/null || true)"
 SUITE="${NETWORK_JOBS_SUITE:-${SUITE:-}}"
 python3 "$SUITE/skills/intro-email-generator/helpers/rank-intros.py" --k-roles 2 --k-forwarders 2
@@ -52,7 +52,7 @@ cat "$DATA/search/intros.json"
 - **Additional context** (optional) — key achievements, why they're interested, specific angles to emphasize
 
 ```bash
-DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"
+DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"  # always resolve from the env; never export a literal DATA
 cat "$DATA/profile.json"
 cat "$DATA/resume/text.md" 2>/dev/null || ls -la "$DATA/resume"
 ```
