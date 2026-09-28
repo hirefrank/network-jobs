@@ -1222,5 +1222,211 @@ class DemoCommandTests(unittest.TestCase):
         self.assertIn("category-affinity", text)
 
 
+class EmbeddingsTests(unittest.TestCase):
+    def setUp(self):
+        from network_jobs import embeddings as emb
+
+        self.emb = emb
+        self.tmp = Path(tempfile.mkdtemp(prefix="nj-emb-"))
+        self.addCleanup(lambda: shutil.rmtree(self.tmp, ignore_errors=True))
+        self._old_env = os.environ.get("NJ_EMBED_PROVIDER")
+        os.environ["NJ_EMBED_PROVIDER"] = "none"
+        self.addCleanup(self._restore_env)
+
+    def _restore_env(self):
+        if self._old_env is None:
+            os.environ.pop("NJ_EMBED_PROVIDER", None)
+        else:
+            os.environ["NJ_EMBED_PROVIDER"] = self._old_env
+
+    class FakeProvider:
+        name = "fake"
+        model = "fake-model"
+        dims = 3
+
+        def __init__(self):
+            self.calls: list[list[str]] = []
+
+        def embed(self, texts):
+            self.calls.append(list(texts))
+            out = []
+            for t in texts:
+                tl = t.lower()
+                if "product" in tl:
+                    out.append([1.0, 0.0, 0.0])
+                elif "engineer" in tl:
+                    out.append([0.0, 1.0, 0.0])
+                else:
+                    out.append([0.0, 0.0, 1.0])
+            return out
+
+    def _job(self, title="Senior Product Manager", company="Acme", **kw):
+        job = {"title": title, "company": company, "department": "Product",
+               "location": "Remote"}
+        job.update(kw)
+        return job
+
+    # --- math ---
+
+    def test_cosine_known_values(self):
+        self.assertAlmostEqual(self.emb.cosine([1, 0], [1, 0]), 1.0)
+        self.assertAlmostEqual(self.emb.cosine([1, 0], [0, 1]), 0.0)
+        self.assertAlmostEqual(self.emb.cosine([1, 1], [1, 1]), 1.0)
+        self.assertEqual(self.emb.cosine([], [1]), 0.0)
+
+    def test_semantic_bonus_mapping(self):
+        b = self.emb.semantic_bonus
+        self.assertEqual(b(0.55, 0.55, 4.0), 0.0)   # at floor -> nothing
+        self.assertEqual(b(0.10, 0.55, 4.0), 0.0)   # below floor -> nothing
+        self.assertEqual(b(1.0, 0.55, 4.0), 4.0)    # perfect -> cap
+        self.assertAlmostEqual(b(0.775, 0.55, 4.0), 2.0)  # halfway -> half
+
+    def test_embed_text_recipe(self):
+        text = self.emb.embed_text_for(
+            {"title": "PM", "department": "Product", "description": "Owns roadmap"})
+        self.assertIn("PM", text)
+        self.assertIn("Product", text)
+        self.assertIn("Owns roadmap", text)
+        # Missing description degrades gracefully.
+        self.assertTrue(self.emb.embed_text_for({"title": "PM"}).strip())
+
+    # --- provider detection never raises ---
+
+    def test_get_provider_none_override(self):
+        self.assertIsNone(self.emb.get_provider())
+
+    # --- score_job wiring ---
+
+    def test_semantic_replaces_keyword_bonus(self):
+        job = self._job()
+        kws = ["product"]  # would hit the keyword path
+        base = score_job(job, {}, resume_keywords=kws)
+        self.assertIn("resume", base["matchReasons"])
+        sem = score_job(
+            job, {}, resume_keywords=kws,
+            resume_vector=[1.0, 0.0, 0.0], job_vector=[1.0, 0.0, 0.0],
+        )
+        self.assertIn("resume-semantic", sem["matchReasons"])
+        self.assertNotIn("resume", sem["matchReasons"])  # replaced, not stacked
+        self.assertGreater(sem["matchScore"], base["matchScore"] - 4)
+
+    def test_semantic_floor_no_bonus_no_keyword_fallback(self):
+        job = self._job()
+        sem = score_job(
+            job, {}, resume_keywords=["product"],
+            resume_vector=[1.0, 0.0, 0.0], job_vector=[0.0, 1.0, 0.0],
+        )
+        self.assertNotIn("resume-semantic", sem["matchReasons"])
+        self.assertNotIn("resume", sem["matchReasons"])
+
+    def test_no_vectors_keyword_path_unchanged(self):
+        job = self._job()
+        res = score_job(job, {}, resume_keywords=["product"],
+                        resume_vector=[1.0, 0.0, 0.0], job_vector=None)
+        self.assertIn("resume", res["matchReasons"])
+
+    def test_match_listings_threads_vectors(self):
+        from network_jobs.fingerprint import fingerprint
+
+        job = self._job()
+        fp = fingerprint(job, company="Acme")
+        result = match_listings(
+            [job], {}, resume_keywords=["product"],
+            resume_vector=[1.0, 0.0, 0.0],
+            job_vectors={fp: [1.0, 0.0, 0.0]},
+            company="Acme",
+        )
+        reasons = result["jobs"][0]["matchReasons"]
+        self.assertIn("resume-semantic", reasons)
+        self.assertNotIn("resume", reasons)
+
+    # --- cache behavior ---
+
+    def _corpus_jobs(self, n=2):
+        from network_jobs.fingerprint import fingerprint
+
+        jobs = []
+        for i in range(n):
+            job = self._job(title=f"Senior Product Manager {i}", company="Acme")
+            job["fingerprint"] = fingerprint(job, company="Acme")
+            jobs.append(job)
+        return jobs
+
+    def test_cache_incremental_embeds_only_new(self):
+        corpus = self.tmp / "corpus"
+        corpus.mkdir()
+        provider = self.FakeProvider()
+        jobs = self._corpus_jobs(2)
+        first = self.emb.maybe_update_embeddings(corpus, jobs, provider=provider)
+        self.assertTrue(first["updated"])
+        self.assertEqual(first["embedded"], 2)
+        self.assertEqual(len(provider.calls), 1)
+
+        # Second run: nothing new -> no embed calls.
+        provider.calls.clear()
+        second = self.emb.maybe_update_embeddings(corpus, jobs, provider=provider)
+        self.assertTrue(second["updated"])
+        self.assertEqual(second["embedded"], 0)
+        self.assertEqual(provider.calls, [])
+
+        # One new job -> exactly one text embedded.
+        jobs.append(self._corpus_jobs(3)[2])
+        third = self.emb.maybe_update_embeddings(corpus, jobs, provider=provider)
+        self.assertEqual(third["embedded"], 1)
+        self.assertEqual(sum(len(c) for c in provider.calls), 1)
+
+    def test_cache_prunes_removed_jobs(self):
+        corpus = self.tmp / "corpus"
+        corpus.mkdir()
+        provider = self.FakeProvider()
+        jobs = self._corpus_jobs(2)
+        self.emb.maybe_update_embeddings(corpus, jobs, provider=provider)
+        self.emb.maybe_update_embeddings(corpus, jobs[:1], provider=provider)
+        cache = self.emb.load_embeddings_cache(corpus)
+        self.assertEqual(len(cache["vectors"]), 1)
+
+    def test_cache_model_change_full_refresh(self):
+        corpus = self.tmp / "corpus"
+        corpus.mkdir()
+        provider = self.FakeProvider()
+        jobs = self._corpus_jobs(2)
+        self.emb.maybe_update_embeddings(corpus, jobs, provider=provider)
+        provider.model = "fake-model-v2"
+        provider.calls.clear()
+        res = self.emb.maybe_update_embeddings(corpus, jobs, provider=provider)
+        self.assertTrue(res["fullRefresh"])
+        self.assertEqual(res["embedded"], 2)
+        cache = self.emb.load_embeddings_cache(corpus)
+        self.assertEqual(cache["model"], "fake-model-v2")
+
+    def test_no_provider_leaves_no_cache(self):
+        corpus = self.tmp / "corpus"
+        corpus.mkdir()
+        res = self.emb.maybe_update_embeddings(corpus, self._corpus_jobs(1))
+        self.assertEqual(res, {"updated": False, "reason": "no-provider"})
+        self.assertFalse((corpus / "embeddings.json").exists())
+
+    # --- rank_corpus degradation ---
+
+    def test_rank_degrades_cleanly_without_provider(self):
+        from network_jobs.rank import _semantic_context
+
+        corpus = self.tmp / "corpus"
+        corpus.mkdir()
+        (self.tmp / "preferences.json").write_text(json.dumps({}) + "\n")
+        jobs = self._corpus_jobs(1)
+        rv, qv, jv = _semantic_context(corpus, jobs, "résumé text", "product")
+        self.assertIsNone(rv)
+        self.assertIsNone(qv)
+        self.assertEqual(jv, {})
+
+        shard = self.tmp / "corpus" / "senior.json"
+        shard.write_text(json.dumps(jobs) + "\n")
+        result = rank_corpus(data_dir=self.tmp, k=10)
+        for job in result["jobs"]:
+            reasons = job.get("matchReasons") or []
+            self.assertFalse([r for r in reasons if "semantic" in r])
+
+
 if __name__ == "__main__":
     unittest.main()

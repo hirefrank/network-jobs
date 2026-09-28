@@ -131,6 +131,45 @@ def _iter_shards(corpus: Path, prefs: dict[str, Any], query: str | None) -> tupl
     return jobs, seen_files
 
 
+def _semantic_context(
+    corpus: Path,
+    jobs: list[dict[str, Any]],
+    resume_text: str,
+    query: str | None,
+) -> tuple[list[float] | None, list[float] | None, dict[str, list[float]]]:
+    """Embed résumé + query once per run; resolve cached job vectors by fp.
+
+    Returns (resume_vector, query_vector, {fingerprint: vector}). Everything
+    is None/{} when no embedding provider is available, in which case callers
+    fall back to keyword scoring with unchanged scores.
+    """
+    from .embeddings import get_provider, load_embeddings_cache
+    from .fingerprint import fingerprint as _fingerprint
+
+    provider = get_provider()
+    if provider is None:
+        return None, None, {}
+    cache = load_embeddings_cache(corpus)
+    cached = cache.get("vectors") or {}
+    job_vectors: dict[str, list[float]] = {}
+    for job in jobs:
+        fp = _fingerprint(job)
+        vec = cached.get(fp)
+        if vec:
+            job_vectors[fp] = vec
+    texts: list[str] = []
+    kinds: list[str] = []
+    if (resume_text or "").strip():
+        texts.append(resume_text.strip())
+        kinds.append("resume")
+    if (query or "").strip():
+        texts.append(query.strip())
+        kinds.append("query")
+    vecs = provider.embed(texts) if texts else None
+    by_kind = dict(zip(kinds, vecs)) if vecs else {}
+    return by_kind.get("resume"), by_kind.get("query"), job_vectors
+
+
 def rank_corpus(
     data_dir: str | Path | None = None,
     k: int = DEFAULT_K,
@@ -155,7 +194,25 @@ def rank_corpus(
     profile = _read_json(root / "profile.json") or {}
     keywords = load_resume_keywords(resume_text, exclude=name_tokens(profile)) if resume_text else []
     jobs, shard_files = _iter_shards(corpus, prefs, query)
-    scored = [score_job(j, prefs, resume_keywords=keywords) for j in jobs]
+    # Opt-in semantic signals: résumé vector replaces the keyword `resume`
+    # bonus; query vector adds a small boost on top of lexical `query` hits.
+    # No provider -> all None/{}, scores identical to before.
+    resume_vector, query_vector, job_vectors = _semantic_context(
+        corpus, jobs, resume_text, query
+    )
+    from .fingerprint import fingerprint as _fingerprint
+
+    fps = [_fingerprint(j) for j in jobs]
+    scored = [
+        score_job(
+            j,
+            prefs,
+            resume_keywords=keywords,
+            resume_vector=resume_vector,
+            job_vector=job_vectors.get(fp),
+        )
+        for j, fp in zip(jobs, fps)
+    ]
     scored = [j for j in scored if not j.get("veto")]
     stale_hidden = 0
     fresh: list[dict[str, Any]] = []
@@ -177,6 +234,13 @@ def rank_corpus(
     else:
         scored = fresh
     if query:
+        from .embeddings import (
+            QUERY_SEMANTIC_FLOOR,
+            QUERY_SEMANTIC_MAX,
+            cosine,
+            semantic_bonus,
+        )
+
         q = query.lower()
         q_tokens = [t for t in q.replace("/", " ").split() if len(t) > 2]
         for job in scored:
@@ -185,6 +249,18 @@ def rank_corpus(
             job["matchScore"] = float(job.get("matchScore") or 0) + hits * 2
             if hits:
                 job.setdefault("matchReasons", []).append("query")
+            if query_vector is not None:
+                # Semantic query boost: additive, never replaces lexical hits.
+                qv = job_vectors.get(_fingerprint(job))
+                if qv is not None:
+                    qb = semantic_bonus(
+                        cosine(query_vector, qv),
+                        QUERY_SEMANTIC_FLOOR,
+                        QUERY_SEMANTIC_MAX,
+                    )
+                    if qb > 0:
+                        job["matchScore"] = float(job.get("matchScore") or 0) + qb
+                        job.setdefault("matchReasons", []).append("query-semantic")
     # Stable multi-pass sort: stale sinks to the bottom, then score desc,
     # then most-recently-seen first, then title.
     scored.sort(key=lambda j: str(j.get("title") or ""))

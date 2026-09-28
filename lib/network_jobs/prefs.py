@@ -6,6 +6,13 @@ from collections import Counter
 from typing import Any
 
 from .classify import CATEGORY_AFFINITY, classify_job
+from .embeddings import (
+    RESUME_SEMANTIC_FLOOR,
+    RESUME_SEMANTIC_MAX,
+    cosine,
+    semantic_bonus,
+)
+from .fingerprint import fingerprint
 from .locations import city_matches, location_buckets_for
 from .text import former_employer_match, tokenize
 
@@ -101,7 +108,16 @@ def score_job(
     prefs: dict[str, Any] | None,
     resume_keywords: list[str] | None = None,
     company: str | None = None,
+    resume_vector: list[float] | None = None,
+    job_vector: list[float] | None = None,
 ) -> dict[str, Any]:
+    """Score one job against prefs.
+
+    resume_vector/job_vector activate the semantic résumé signal: when both
+    are present, cosine similarity *replaces* the keyword `resume` bonus
+    (never stacks with it). Absent either vector, keyword scoring runs
+    exactly as before.
+    """
     prefs = prefs or {}
     classified = classify_job(job, company=company or job.get("company"))
     title = str(classified.get("title") or "")
@@ -200,11 +216,22 @@ def score_job(
         reasons.append("mustHave")
 
     if resume_keywords:
-        tokens = set(tokenize(blob))
-        hits = [k for k in resume_keywords if k.lower() in tokens or k.lower() in blob.lower()]
-        if hits:
-            score += min(4, len(hits))
-            reasons.append("resume")
+        if resume_vector is not None and job_vector is not None:
+            # Semantic résumé signal replaces the keyword bonus entirely.
+            bonus = semantic_bonus(
+                cosine(resume_vector, job_vector),
+                RESUME_SEMANTIC_FLOOR,
+                RESUME_SEMANTIC_MAX,
+            )
+            if bonus > 0:
+                score += bonus
+                reasons.append("resume-semantic")
+        else:
+            tokens = set(tokenize(blob))
+            hits = [k for k in resume_keywords if k.lower() in tokens or k.lower() in blob.lower()]
+            if hits:
+                score += min(4, len(hits))
+                reasons.append("resume")
 
     salary_min = prefs.get("salaryMin")
     salary = classified.get("salary") or {}
@@ -243,9 +270,26 @@ def match_listings(
     prefs: dict[str, Any] | None,
     resume_keywords: list[str] | None = None,
     company: str | None = None,
+    resume_vector: list[float] | None = None,
+    job_vectors: dict[str, list[float]] | None = None,
 ) -> dict[str, Any]:
+    job_vectors = job_vectors or {}
+
+    def _job_vector(job: dict[str, Any]) -> list[float] | None:
+        fp = str(job.get("fingerprint") or "") or fingerprint(
+            job, company=company or job.get("company")
+        )
+        return job_vectors.get(fp)
+
     scored = [
-        score_job(j, prefs, resume_keywords=resume_keywords, company=company)
+        score_job(
+            j,
+            prefs,
+            resume_keywords=resume_keywords,
+            company=company,
+            resume_vector=resume_vector,
+            job_vector=_job_vector(j),
+        )
         for j in listings
     ]
     matches = [j for j in scored if j.get("matched")]

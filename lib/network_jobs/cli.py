@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,28 @@ def _dump(payload: Any, verbose: bool) -> None:
         print(json.dumps(payload, ensure_ascii=False))
 
 
+def _match_semantic(
+    data_dir: str | Path | None, resume_text: str
+) -> tuple[list[float] | None, dict[str, list[float]]]:
+    """(resume_vector, job_vectors) for the triage path.
+
+    Embeds the résumé once per run; job vectors come from the corpus cache
+    (triage listings that were previously merged resolve by fingerprint).
+    (None, {}) when no provider is configured.
+    """
+    from .embeddings import get_provider, load_embeddings_cache
+
+    provider = get_provider()
+    if provider is None or not (resume_text or "").strip():
+        return None, {}
+    vecs = provider.embed([resume_text.strip()])
+    resume_vector = vecs[0] if vecs else None
+    data = data_home(data_dir)
+    cache = load_embeddings_cache(data / "corpus")
+    vectors = cache.get("vectors")
+    return resume_vector, vectors if isinstance(vectors, dict) else {}
+
+
 def _do_match_prefs(
     triage_dir: Path,
     listings: list[dict[str, Any]],
@@ -38,12 +61,16 @@ def _do_match_prefs(
     exclude: set[str],
     company: str,
     verbose: bool,
+    data_dir: str | Path | None = None,
 ) -> dict[str, Any]:
+    resume_vector, job_vectors = _match_semantic(data_dir, resume_text)
     result = match_listings(
         listings,
         prefs,
         resume_keywords=load_resume_keywords(resume_text, exclude=exclude) if resume_text else None,
         company=company or None,
+        resume_vector=resume_vector,
+        job_vectors=job_vectors,
     )
     out_dir = triage_dir / "index"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -91,7 +118,8 @@ def cmd_match_prefs(args: argparse.Namespace) -> int:
     profile = _load_json(data / "profile.json", {})
     exclude = name_tokens(profile) if isinstance(profile, dict) else set()
     company = args.company or ""
-    result = _do_match_prefs(triage, listings, prefs, resume_text, exclude, company, args.verbose)
+    result = _do_match_prefs(triage, listings, prefs, resume_text, exclude, company, args.verbose,
+                                 data_dir=args.data)
     matches_path = triage / "index" / "matches.json"
     quiet = {
         "matches": result["nMatches"],
@@ -392,7 +420,8 @@ def _do_refresh(
                     "listings": len(listings),
                 })
             else:
-                mres = _do_match_prefs(triage, listings, prefs, resume_text, exclude, name, False)
+                mres = _do_match_prefs(triage, listings, prefs, resume_text, exclude, name, False,
+                                          data_dir=data_dir)
                 _do_crawl_state(
                     data, triage, listings_path, companies_path,
                     slug, name, True, url, False,
@@ -625,6 +654,90 @@ def cmd_rank_intros(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_embed_setup(args: argparse.Namespace) -> int:
+    """One-time setup for semantic matching: ensure fastembed, warm the model."""
+    from .embeddings import get_provider
+
+    provider = get_provider()
+    if provider is not None:
+        if provider.embed(["network-jobs embedding warmup"]):
+            print(
+                f"ready: provider={provider.name} "
+                f"model={provider.model} dims={provider.dims}"
+            )
+            return 0
+        print(
+            f"warning: provider {provider.name} detected but a warmup "
+            "embed failed; falling back to fastembed setup",
+            file=sys.stderr,
+        )
+    print("fastembed is not installed. Installing (one time):")
+    print("  python3 -m pip install fastembed")
+    rc = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "fastembed"]
+    ).returncode
+    if rc != 0:
+        print(
+            "pip install failed; run it yourself, then re-run "
+            "`network-jobs embed-setup`",
+            file=sys.stderr,
+        )
+        return 1
+    provider = get_provider()
+    if provider is None or not provider.embed(["network-jobs embedding warmup"]):
+        print("fastembed installed but embeddings still not working.", file=sys.stderr)
+        return 1
+    print(
+        f"ready: provider={provider.name} "
+        f"model={provider.model} dims={provider.dims}"
+    )
+    print(
+        "Next: `network-jobs rebuild <batch>` (or refresh) populates "
+        "corpus/embeddings.json."
+    )
+    return 0
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    from .corpus import load_existing_jobs
+    from .embeddings import embeddings_path, get_provider, load_embeddings_cache
+
+    data = data_home(args.data)
+    corpus = data / "corpus"
+    provider = get_provider()
+    cache = load_embeddings_cache(corpus)
+    vectors = cache.get("vectors") or {}
+    jobs = load_existing_jobs(corpus)
+    fps = {str(j.get("fingerprint") or "") for j in jobs} - {""}
+    covered = sum(1 for fp in fps if fp in vectors)
+    payload = {
+        "provider": provider.name if provider else None,
+        "model": provider.model if provider else None,
+        "dims": provider.dims if provider else 0,
+        "embeddingsFile": str(embeddings_path(corpus)) if cache else None,
+        "cacheModel": cache.get("model"),
+        "corpusJobs": len(fps),
+        "vectorsCached": len(vectors),
+        "coverage": round(covered / len(fps), 3) if fps else 0.0,
+    }
+    if getattr(args, "json", False):
+        _dump(payload, args.verbose)
+        return 0
+    if provider:
+        print(f"embeddings: {provider.name} ({provider.model}, {provider.dims}d)")
+    else:
+        print("embeddings: not configured (keyword scoring only)")
+        print("  run `network-jobs embed-setup` to enable semantic matching")
+    if cache:
+        print(
+            f"cache: {len(vectors)} vectors, model={cache.get('model')}, "
+            f"coverage {payload['coverage']:.0%} of {len(fps)} corpus jobs"
+        )
+    else:
+        print("cache: none (run rebuild or refresh with a provider configured)")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="network-jobs-helper", add_help=True)
     p.add_argument("-v", "--verbose", action="store_true", help="print extra fields")
@@ -728,6 +841,15 @@ def build_parser() -> argparse.ArgumentParser:
     ri.add_argument("--k-roles", type=int, default=2)
     ri.add_argument("--k-forwarders", type=int, default=2)
     ri.set_defaults(func=cmd_rank_intros)
+
+    es = sub.add_parser("embed-setup", help="install fastembed + warm the embedding model (one time)")
+    es.add_argument("--data")
+    es.set_defaults(func=cmd_embed_setup)
+
+    d = sub.add_parser("doctor", help="report embedding provider + cache coverage")
+    d.add_argument("--data")
+    d.add_argument("--json", action="store_true", help="print the report as JSON")
+    d.set_defaults(func=cmd_doctor)
 
     return p
 
