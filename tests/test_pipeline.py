@@ -1485,6 +1485,41 @@ class ConsumerCliTests(unittest.TestCase):
         self.assertTrue(lines[0].startswith("import: "), proc.stdout)
         self.assertEqual(len(list((tmp / "logs").glob("import-*.json"))), 1)
 
+    def test_intros_dispatched(self):
+        proc = self._run([str(ROOT / "bin" / "network-jobs"),
+                          "intros", "--help"])
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("Usage: network-jobs intros", proc.stdout)
+
+    def test_intros_runs(self):
+        import json
+        import subprocess
+
+        data = Path(tempfile.mkdtemp(prefix="nj-intros-"))
+        self.addCleanup(lambda: shutil.rmtree(data, ignore_errors=True))
+        (data / "search").mkdir()
+        (data / "connections").mkdir()
+        ranked = {"jobs": [
+            {"title": "Senior Product Manager", "company": "Stripe",
+             "url": "https://example.invalid/1"},
+            {"title": "Staff Product Manager", "company": "Stripe",
+             "url": "https://example.invalid/2"},
+        ]}
+        (data / "search" / "ranked.json").write_text(json.dumps(ranked))
+        conns = [
+            {"firstName": "Jane", "lastName": "Doe", "company": "Stripe"},
+            {"firstName": "John", "lastName": "Smith", "company": "Stripe"},
+        ]
+        (data / "connections" / "connections.json").write_text(json.dumps(conns))
+        env = {"NETWORK_JOBS_HOME": str(data)}
+        proc = subprocess.run(
+            [str(ROOT / "bin" / "network-jobs"), "intros"],
+            capture_output=True, text=True, env={**os.environ, **env},
+            timeout=60)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = json.loads((data / "search" / "intros.json").read_text())
+        self.assertEqual(out["kRoles"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

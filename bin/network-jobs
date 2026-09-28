@@ -42,6 +42,10 @@ Commands:
   search [--query "..."] [-k N] [--company-cap N] [--include-stale] [--json]
       Rank the corpus against your prefs and print matching jobs
 
+  intros [--k-roles N] [--k-forwarders N]
+      Pick 1-2 roles from the last search + 1-2 forwarders each
+      from your connections (writes search/intros.json)
+
   companies [--sort connections|name|crawl] [--json]
       List the company graph: connections, last crawl, listing-set hash
 
@@ -196,6 +200,25 @@ Options:
 Examples:
   network-jobs search
   network-jobs search --query "staff product engineer" -k 10
+EOF
+}
+
+usage_intros() {
+  cat <<'EOF'
+Usage: network-jobs intros [--k-roles N] [--k-forwarders N]
+
+Pick up to N roles from the last `network-jobs search` (search/ranked.json)
+and up to N forwarders per role from your connections. Writes
+~/.network-jobs/search/intros.json for the intro-email-generator skill.
+
+Options:
+  --k-roles N       Max roles to keep (default: 2)
+  --k-forwarders N  Max forwarders per role (default: 2)
+  --help, -h        Show this help
+
+Examples:
+  network-jobs intros
+  network-jobs intros --k-roles 1 --k-forwarders 3
 EOF
 }
 
@@ -386,6 +409,7 @@ cmd_help() {
     doctor) usage_doctor ;;
     import) usage_import ;;
     search) usage_search ;;
+    intros) usage_intros ;;
     demo) usage_demo ;;
     embed-setup) usage_embed_setup ;;
     companies) usage_companies ;;
@@ -1048,6 +1072,14 @@ cmd_search() {
   _lib_cli search "$@"
 }
 
+cmd_intros() {
+  if network_jobs_want_help "$@"; then
+    usage_intros
+    return 0
+  fi
+  _lib_cli rank-intros "$@"
+}
+
 cmd_demo() {
   if network_jobs_want_help "$@"; then
     usage_demo
@@ -1095,6 +1127,7 @@ case "$cmd" in
   doctor) cmd_doctor "$@" ;;
   import) cmd_import "$@" ;;
   search) cmd_search "$@" ;;
+  intros) cmd_intros "$@" ;;
   demo) cmd_demo "$@" ;;
   embed-setup) cmd_embed_setup "$@" ;;
   companies) cmd_companies "$@" ;;

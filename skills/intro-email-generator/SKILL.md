@@ -40,10 +40,8 @@ Gather before generating:
 - **Ranked intros** — run the helper first (joins **full** `connections.json`, not the 10-person sample):
 
 ```bash
+network-jobs intros --k-roles 2 --k-forwarders 2
 DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"  # always resolve from the env; never export a literal DATA
-SUITE="$(cat "$DATA/suite-root" 2>/dev/null || true)"
-SUITE="${NETWORK_JOBS_SUITE:-${SUITE:-}}"
-python3 "$SUITE/skills/intro-email-generator/helpers/rank-intros.py" --k-roles 2 --k-forwarders 2
 cat "$DATA/search/intros.json"
 ```
 
@@ -137,7 +135,7 @@ For more examples, see [examples.md](examples.md).
 ## Integration with network-jobs
 
 If the user found a job using the network-jobs skill:
-- Run `rank-intros.py` against `search/ranked.json` + `connections/connections.json`
+- Run `network-jobs intros` (joins `search/ranked.json` + `connections/connections.json`)
 - Confirm 1–2 roles and 1–2 forwarders with the user
 - Fetch JD **only** for `fetchJdUrls` (or skip and use `department`)
 - Job seeker name/email may be in ~/.network-jobs/profile.json
@@ -145,4 +143,4 @@ If the user found a job using the network-jobs skill:
 
 ## Helpers
 
-- [`helpers/rank-intros.py`](helpers/rank-intros.py) — 1–2 roles + 1–2 forwarders → `$DATA/search/intros.json`
+- `network-jobs intros` (wraps [`helpers/rank-intros.py`](helpers/rank-intros.py)) — 1–2 roles + 1–2 forwarders → `$DATA/search/intros.json`
