@@ -1657,6 +1657,24 @@ class BuildPackTests(unittest.TestCase):
         self.assertIn("acme", slugs)
         self.assertNotIn("globex", slugs)
 
+    def test_company_matching_person_name_excluded(self):
+        from network_jobs.pack import build_pack
+        csv_text = (
+            "First Name,Last Name,Email Address,Company,Position,Connected On\n"
+            'Jane,Doe,jane@example.com,Jane Doe,Founder,01 Jan 2024\n'
+            'John,Smith,john@example.com,Initech,Engineer,02 Feb 2024\n'
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "Connections.csv"
+            p.write_text(csv_text, encoding="utf-8")
+            pack = build_pack(p, generated_on="2026-09-28")
+        dump = json.dumps(pack)
+        self.assertNotIn("Jane Doe", dump)
+        self.assertNotIn("jane@example.com", dump)
+        slugs = {c["slug"] for c in pack["companies"]}
+        self.assertIn("initech", slugs)
+        self.assertNotIn("jane-doe", slugs)
+
 
 if __name__ == "__main__":
     unittest.main()

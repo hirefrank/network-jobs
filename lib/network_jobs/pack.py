@@ -120,7 +120,11 @@ def _read_connections_csv(source: str | Path) -> list[dict[str, str]]:
         company = get("company")
         if not company:
             continue
-        rows.append({"company": company, "position": get("position")})
+        # Person's own name, normalized — used ONLY to exclude companies that
+        # are literally a person's name (e.g. Company == "Jane Doe"). Never
+        # leaves this module.
+        person = basic_normalize(f"{get('first name')} {get('last name')}")
+        rows.append({"company": company, "position": get("position"), "person": person})
     return rows
 
 
@@ -135,10 +139,17 @@ def build_pack(
     assets = _repo_assets()
     ignore_companies, ignore_words, overrides = _ignore_sets(assets)
 
+    rows = _read_connections_csv(source)
+    # Companies that are literally a connection's own name (Company == "Jane
+    # Doe") would name a person in the published pack — exclude them.
+    person_names = {r["person"] for r in rows if r["person"]}
+
     agg: dict[str, dict[str, Any]] = {}
-    for row in _read_connections_csv(source):
+    for row in rows:
         norm = _normalize_company(row["company"], overrides)
         if _should_ignore(norm, ignore_companies, ignore_words):
+            continue
+        if norm in person_names:
             continue
         entry = agg.get(norm)
         if entry is None:
