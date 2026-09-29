@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Network Jobs — find jobs where you're already connected</title>
+<meta name="description" content="Local-first agent skill suite: turn your LinkedIn graph into a private job corpus, rank openings against your preferences, and draft warm intros. No cloud. No account.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0c07;
+  --panel: #10130c;
+  --panel2: #141810;
+  --ink: #e9e7d8;
+  --dim: #8f8c78;
+  --faint: #55523f;
+  --amber: #ffb000;
+  --amber-dim: #8a5f00;
+  --green: #4ade80;
+  --red: #ff5d5d;
+  --line: #262a1c;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --disp: "Archivo Black", sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 15px;
+  line-height: 1.65;
+  overflow-x: hidden;
+}
+/* CRT scanlines + vignette */
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 60; pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0,0,0,.16) 0 1px, transparent 1px 3px);
+  mix-blend-mode: multiply;
+}
+body::after {
+  content: ""; position: fixed; inset: 0; z-index: 61; pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.5) 100%);
+}
+::selection { background: var(--amber); color: #000; }
+a { color: var(--amber); }
+.wrap { max-width: 1020px; margin: 0 auto; padding: 0 1.5rem; }
+section { padding: 4.5rem 0; scroll-margin-top: 4rem; }
+
+/* ---------- nav ---------- */
+nav { position: sticky; top: 0; z-index: 50; background: rgba(10,12,7,.92); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
+nav .wrap { display: flex; align-items: center; gap: 1.5rem; height: 3.75rem; }
+.brand { font-family: var(--disp); font-size: .95rem; letter-spacing: .02em; color: var(--ink); text-decoration: none; }
+.brand b { color: var(--amber); }
+.navlinks { display: flex; gap: 1.25rem; margin-left: auto; font-size: .8rem; }
+.navlinks a { color: var(--dim); text-decoration: none; }
+.navlinks a:hover { color: var(--amber); }
+.navver { font-size: .72rem; color: var(--faint); border: 1px solid var(--line); padding: .15rem .5rem; white-space: nowrap; }
+@media (max-width: 700px) { .navlinks { display: none; } }
+
+/* ---------- hero ---------- */
+.hero { padding: 5rem 0 3.5rem; position: relative; }
+.statusline { color: var(--green); font-size: .8rem; margin-bottom: 1.5rem; }
+.statusline .blink { animation: blink 1.1s steps(1) infinite; color: var(--amber); }
+@keyframes blink { 50% { opacity: 0; } }
+h1 {
+  font-family: var(--disp); font-weight: 400;
+  font-size: clamp(2.2rem, 6vw, 4.2rem); line-height: 1.02;
+  letter-spacing: -0.01em; margin-bottom: 1.25rem;
+  text-shadow: 0 0 32px rgba(255,176,0,.25);
+}
+h1 .hl { color: var(--amber); }
+.lede { color: var(--dim); max-width: 62ch; font-size: 1rem; margin-bottom: 2rem; }
+.lede strong { color: var(--ink); font-weight: 600; }
+
+/* install terminal */
+.term { background: var(--panel); border: 1px solid var(--line); box-shadow: 0 0 0 1px #000, 0 12px 48px rgba(0,0,0,.55), 0 0 64px rgba(255,176,0,.06); }
+.termbar { display: flex; align-items: center; gap: .5rem; padding: .6rem .9rem; border-bottom: 1px solid var(--line); font-size: .75rem; color: var(--faint); }
+.dot { width: .65rem; height: .65rem; border-radius: 50%; background: #2c2f22; }
+.dot:first-of-type { background: var(--red); } .dot:nth-of-type(2) { background: var(--amber); } .dot:nth-of-type(3) { background: var(--green); }
+.termbar .tabs { display: flex; gap: .25rem; margin-left: auto; }
+.termbar button { font: inherit; background: none; border: 1px solid transparent; color: var(--dim); padding: .25rem .7rem; cursor: pointer; font-size: .75rem; }
+.termbar button[aria-selected="true"] { color: var(--amber); border-color: var(--amber-dim); background: rgba(255,176,0,.07); }
+.termbody { padding: 1.25rem 1.25rem 1.4rem; }
+.cmd { display: flex; align-items: flex-start; gap: .75rem; padding: .45rem 0; font-size: .92rem; }
+.cmd .ps { color: var(--green); user-select: none; }
+.cmd code { color: var(--ink); word-break: break-all; }
+.cmd code .c { color: var(--faint); }
+.copybtn { margin-left: auto; flex-shrink: 0; font: inherit; font-size: .72rem; background: none; border: 1px solid var(--line); color: var(--dim); padding: .2rem .6rem; cursor: pointer; }
+.copybtn:hover { color: var(--amber); border-color: var(--amber-dim); }
+.cmdline-out { color: var(--dim); font-size: .82rem; padding-left: 1.6rem; }
+.cmdline-out .ok { color: var(--green); }
+.install-note { margin-top: 1rem; font-size: .78rem; color: var(--faint); }
+
+/* ---------- section headers ---------- */
+.shead { display: flex; align-items: baseline; gap: 1rem; margin-bottom: .75rem; }
+.shead .num { font-family: var(--disp); color: var(--amber); font-size: .9rem; }
+.shead h2 { font-family: var(--disp); font-weight: 400; font-size: clamp(1.4rem, 3vw, 2rem); letter-spacing: 0; }
+.rule { border: 0; border-top: 1px dashed var(--amber-dim); margin-bottom: 2.25rem; opacity: .6; }
+.ssub { color: var(--dim); max-width: 68ch; margin-bottom: 2rem; font-size: .92rem; }
+
+/* ---------- transcripts ---------- */
+.session { background: var(--panel); border: 1px solid var(--line); margin-bottom: 1.5rem; }
+.session > header { display: flex; gap: .75rem; align-items: center; padding: .65rem 1rem; border-bottom: 1px solid var(--line); font-size: .78rem; }
+.who { padding: .1rem .55rem; font-size: .72rem; border: 1px solid; }
+.who.you { color: var(--amber); border-color: var(--amber-dim); }
+.who.agent { color: var(--green); border-color: #1f4d2e; }
+.session > header .tool { color: var(--faint); margin-left: auto; font-size: .72rem; }
+.lines { padding: 1rem 1.25rem 1.25rem; font-size: .87rem; }
+.lines .u { color: var(--ink); margin-bottom: .9rem; }
+.lines .u::before { content: "> "; color: var(--amber); }
+.run { border-left: 2px solid var(--amber-dim); margin: .9rem 0; padding: .1rem 0 .1rem 1rem; color: var(--dim); }
+.run .t { color: var(--amber); font-size: .78rem; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: .15rem 1rem; margin: .6rem 0; font-size: .82rem; }
+.kv dt { color: var(--faint); } .kv dd { color: var(--ink); }
+.score { color: var(--green); }
+.bar { display: inline-block; letter-spacing: -1px; }
+.mail { border: 1px dashed var(--amber-dim); padding: .9rem 1rem; margin-top: .8rem; font-size: .82rem; background: rgba(255,176,0,.03); }
+.mail b { color: var(--amber); font-weight: 600; }
+
+/* ---------- pipeline ---------- */
+.pipe { border: 1px solid var(--line); background: var(--panel); padding: 1.5rem; overflow-x: auto; }
+.pipe pre { font-family: var(--mono); font-size: .8rem; line-height: 1.7; color: var(--dim); min-width: 560px; }
+.pipe pre .a { color: var(--amber); } .pipe pre .g { color: var(--green); } .pipe pre .w { color: var(--ink); }
+.gate { margin-top: 1rem; border: 1px solid #1f4d2e; background: rgba(74,222,128,.05); padding: .9rem 1.1rem; font-size: .85rem; color: var(--ink); }
+.gate b { color: var(--green); }
+
+/* ---------- skills grid ---------- */
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.cell { background: var(--panel); padding: 1.3rem 1.25rem; }
+.cell:hover { background: var(--panel2); }
+.cell .id { font-size: .72rem; color: var(--amber); margin-bottom: .5rem; }
+.cell h3 { font-family: var(--disp); font-weight: 400; font-size: 1rem; margin-bottom: .5rem; }
+.cell p { font-size: .82rem; color: var(--dim); }
+@media (max-width: 800px) { .grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
+
+/* ---------- cli ---------- */
+.cli .termbody { font-size: .85rem; }
+.cli .row { display: flex; gap: 1rem; padding: .3rem 0; border-bottom: 1px dotted #22261a; }
+.cli .row:last-child { border-bottom: 0; }
+.cli .c { color: var(--amber); white-space: nowrap; }
+.cli .d { color: var(--dim); }
+
+/* ---------- localfirst ---------- */
+.checks { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.check { border: 1px solid var(--line); background: var(--panel); padding: 1.1rem 1.2rem; font-size: .85rem; }
+.check b.ok { color: var(--green); font-weight: 600; }
+.check p { color: var(--dim); margin-top: .3rem; font-size: .82rem; }
+.check code { color: var(--amber); font-size: .78rem; }
+@media (max-width: 700px) { .checks { grid-template-columns: 1fr; } }
+
+/* ---------- faq ---------- */
+details { border: 1px solid var(--line); background: var(--panel); margin-bottom: .6rem; }
+summary { cursor: pointer; padding: .9rem 1.1rem; font-size: .9rem; list-style: none; display: flex; gap: .75rem; }
+summary::-webkit-details-marker { display: none; }
+summary::before { content: "+"; color: var(--amber); }
+details[open] summary::before { content: "–"; }
+details .a { padding: 0 1.1rem 1rem 2.3rem; color: var(--dim); font-size: .85rem; }
+details .a code { color: var(--amber); font-size: .8rem; }
+
+/* ---------- footer ---------- */
+footer { border-top: 1px solid var(--line); padding: 2.5rem 0 3rem; font-size: .8rem; color: var(--faint); }
+footer .wrap { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: center; }
+footer a { color: var(--dim); text-decoration: none; } footer a:hover { color: var(--amber); }
+footer .sig { margin-left: auto; }
+
+/* reveal */
+.rv { opacity: 0; transform: translateY(14px); transition: opacity .6s ease, transform .6s ease; }
+.rv.in { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) { .rv { opacity: 1; transform: none; transition: none; } .statusline .blink { animation: none; } }
+</style>
+</head>
+<body>
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top"><b>$</b> network-jobs</a>
+    <div class="navlinks">
+      <a href="#sessions">sessions</a><a href="#pipeline">pipeline</a><a href="#skills">skills</a><a href="#cli">cli</a><a href="#faq">faq</a>
+    </div>
+    <span class="navver">v1.3.1 · MIT</span>
+  </div>
+</nav>
+
+<div class="wrap" id="top">
+  <header class="hero">
+    <div class="statusline">[agent online] local-first skill suite · 6 skills loaded <span class="blink">▊</span></div>
+    <h1>Find jobs where you're <span class="hl">already connected.</span></h1>
+    <p class="lede">Network Jobs turns your LinkedIn graph into a <strong>private job corpus</strong>. Your agent discovers openings at companies you know, ranks them against your preferences, and drafts <strong>forwardable warm intros</strong>. No cloud. No account. It all happens on your machine.</p>
+    <div class="term rv">
+      <div class="termbar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="margin-left:.5rem">frank — zsh</span>
+        <div class="tabs" role="tablist">
+          <button role="tab" aria-selected="true" data-tab="npm">npm</button>
+          <button role="tab" aria-selected="false" data-tab="npx">zero-install</button>
+        </div>
+      </div>
+      <div class="termbody" data-pane="npm">
+        <div class="cmd"><span class="ps">$</span><code>npm i -g @hirefrank/network-jobs@latest</code><button class="copybtn" data-copy="npm i -g @hirefrank/network-jobs@latest">copy</button></div>
+        <div class="cmd"><span class="ps">$</span><code>network-jobs setup --agent auto</code><button class="copybtn" data-copy="network-jobs setup --agent auto">copy</button></div>
+        <div class="cmdline-out"><span class="ok">OK</span> 6/6 skills linked · data <span class="ok">~/.network-jobs</span> seeded · agent-browser ready</div>
+      </div>
+      <div class="termbody" data-pane="npx" hidden>
+        <div class="cmd"><span class="ps">$</span><code>npx --yes @hirefrank/network-jobs@latest setup --agent auto</code><button class="copybtn" data-copy="npx --yes @hirefrank/network-jobs@latest setup --agent auto">copy</button></div>
+        <div class="cmdline-out">no global install needed — the launcher lands on <span class="ok">~/.local/bin</span> for you</div>
+      </div>
+      <div class="install-note" style="padding:0 1.25rem 1.2rem">Works with Claude Code, Cursor, Codex, OpenCode, Pi, Gemini CLI &amp; more · <span class="cmdline-out" style="padding:0">then live in your agent: <span class="ok">“set up network jobs from my resume”</span></span></div>
+    </div>
+  </header>
+
+  <section id="sessions">
+    <div class="shead"><span class="num">01</span><h2>Watch a session</h2></div>
+    <hr class="rule">
+    <p class="ssub">Daily use happens in your agent, not a dashboard. Three real exchanges, start to warm intro.</p>
+
+    <div class="session rv">
+      <header><span class="who you">you</span><span>“Import my LinkedIn zip at ~/Downloads/Connections.zip”</span><span class="tool">network-jobs-import</span></header>
+      <div class="lines">
+        <div class="run"><span class="t">└ network-jobs import ~/Downloads/Connections.zip</span>
+          <dl class="kv"><dt>connections</dt><dd>312 parsed</dd><dt>companies</dt><dd>87 in graph</dd><dt>densest</dt><dd>Stripe (14) · Figma (9) · Notion (7)</dd></dl>
+        </div>
+        <div class="u" style="color:var(--green)">Done — 87 companies mapped. Say the word and I'll go find who's hiring.</div>
+      </div>
+    </div>
+
+    <div class="session rv">
+      <header><span class="who you">you</span><span>“Find open roles at my top 5 companies”</span><span class="tool">careers-discover</span></header>
+      <div class="lines">
+        <div class="run"><span class="t">└ discover → triage/careers-stripe-2026-09-29/</span>
+          <dl class="kv"><dt>staged</dt><dd>12 roles · Stripe (5) · Figma (4) · Notion (3)</dd><dt>corpus</dt><dd>untouched — nothing ingested yet</dd></dl>
+        </div>
+        <div class="u">12 roles staged for review. Skim <span style="color:var(--amber)">triage/</span> and tell me which batch to ingest.</div>
+        <div class="u">“ingest the Stripe batch”</div>
+        <div class="run"><span class="t">└ jobs-ingest → corpus/</span>
+          <dl class="kv"><dt>ingested</dt><dd>5 jobs · Senior Product · NYC + remote</dd><dt>totalJobs</dt><dd class="score">5</dd></dl>
+        </div>
+      </div>
+    </div>
+
+    <div class="session rv">
+      <header><span class="who you">you</span><span>“Senior PM roles, NYC, remote-friendly”</span><span class="tool">network-jobs → intro-email-generator</span></header>
+      <div class="lines">
+        <div class="run"><span class="t">└ search · Showing 2 of 5 match prefs</span>
+          <dl class="kv"><dt>94 <span class="bar score">▮▮▮▮▯</span></dt><dd>Senior Product Manager — Stripe · NYC/hybrid</dd><dt>88 <span class="bar score">▮▮▮▮▯</span></dt><dd>Senior PM, Growth — Figma · remote</dd></dl>
+        </div>
+        <div class="u">“Draft an intro to Maya at Stripe”</div>
+        <div class="mail"><b>via Dan (ex-Stripe, 1st-degree) → Maya</b><br>Subject: quick intro — Senior PM role at Stripe<br>…two short paragraphs, one forwardable ask. You send it, not the agent.</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="pipeline">
+    <div class="shead"><span class="num">02</span><h2>The pipeline</h2></div>
+    <hr class="rule">
+    <div class="pipe rv"><pre><span class="w">Résumé</span> ──▶ <span class="a">profile + prefs interview</span>        <span class="g">(who you are, what you want)</span>
+<span class="w">LinkedIn ZIP</span> ──▶ <span class="a">company graph</span>                 <span class="g">(312 connections → 87 companies)</span>
+      │──▶ <span class="a">careers-discover</span> ──▶ <span class="w">triage/</span>            <span class="g">(staged, never silent)</span>
+      │──▶ <span class="g">you review</span> ──▶ <span class="a">jobs-ingest</span> ──▶ <span class="w">corpus/</span>  <span class="g">(confirmed only)</span>
+      └──▶ <span class="a">search</span> ──▶ <span class="a">warm intro</span>                      <span class="g">(ranked, forwardable)</span></pre></div>
+    <div class="gate rv"><b>STOPGATE:</b> discover only stages. Nothing enters your corpus until you explicitly say so — review triage first, ingest second.</div>
+  </section>
+
+  <section id="skills">
+    <div class="shead"><span class="num">03</span><h2>Six skills, one loop</h2></div>
+    <hr class="rule">
+    <div class="grid">
+      <div class="cell rv"><div class="id">skill_01</div><h3>network-jobs-setup</h3><p>Résumé → profile, plus a preferences interview grounded in your background: location, remote/hybrid, IC vs manager, former employers.</p></div>
+      <div class="cell rv"><div class="id">skill_02</div><h3>network-jobs-import</h3><p>LinkedIn Connections ZIP → local company graph. No PII ever leaves the machine.</p></div>
+      <div class="cell rv"><div class="id">skill_03</div><h3>careers-discover</h3><p>Model-driven career-page discovery. Handles JS-heavy boards via agent-browser. Stages, never ingests.</p></div>
+      <div class="cell rv"><div class="id">skill_04</div><h3>jobs-ingest</h3><p>Promotes a confirmed triage batch into normalized corpus shards. Only on your word.</p></div>
+      <div class="cell rv"><div class="id">skill_05</div><h3>network-jobs</h3><p>Searches your corpus with your prefs as defaults. Semantic matching optional via embed-setup.</p></div>
+      <div class="cell rv"><div class="id">skill_06</div><h3>intro-email-generator</h3><p>Forwardable warm-intro emails through real mutuals. The agent drafts — you send.</p></div>
+    </div>
+  </section>
+
+  <section id="cli" class="cli">
+    <div class="shead"><span class="num">04</span><h2>The CLI</h2></div>
+    <hr class="rule">
+    <p class="ssub">For install, update, doctor, and imports. Everything else lives in the agent.</p>
+    <div class="term rv">
+      <div class="termbar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="margin-left:.5rem">cli reference</span></div>
+      <div class="termbody">
+        <div class="row"><span class="c">setup · update · doctor</span><span class="d">install skills, refresh suite, health check</span></div>
+        <div class="row"><span class="c">import &lt;zip-or-csv&gt;</span><span class="d">LinkedIn connections → company graph</span></div>
+        <div class="row"><span class="c">profile import · show · clear</span><span class="d">résumé in, identity out (PDF/DOCX/MD/TXT)</span></div>
+        <div class="row"><span class="c">search · intros · companies</span><span class="d">ranked roles, forwarders, graph stats</span></div>
+        <div class="row"><span class="c">refresh · demo · embed-setup</span><span class="d">re-crawl, synthetic demo, semantic search</span></div>
+        <div class="row"><span class="c">corpus clear · reset · uninstall</span><span class="d">wipe jobs, unlink skills, full remove</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="local">
+    <div class="shead"><span class="num">05</span><h2>Local-first, for real</h2></div>
+    <hr class="rule">
+    <div class="checks">
+      <div class="check rv"><b class="ok">OK</b> — no cloud account<div><p>Everything lives in <code>~/.network-jobs/</code>: connections, companies, corpus, triage, profile, prefs, résumé. There is no hosted API to sign up for.</p></div></div>
+      <div class="check rv"><b class="ok">OK</b> — your data stays home<div><p>Skills read local files. The only network calls are the career pages your agent visits — the same pages you'd open in a browser.</p></div></div>
+      <div class="check rv"><b class="ok">OK</b> — model-agnostic<div><p>Use any model. Stronger ones discover career pages better; mid-tier is plenty for search and intros.</p></div></div>
+      <div class="check rv"><b class="ok">OK</b> — free &amp; MIT<div><p>Open source, local free. The only spend is the tokens your own agent uses.</p></div></div>
+    </div>
+  </section>
+
+  <section id="faq">
+    <div class="shead"><span class="num">06</span><h2>faq</h2></div>
+    <hr class="rule">
+    <details class="rv" open><summary>Does anything get uploaded anywhere?</summary><div class="a">No. Profile, résumé, and connections live in <code>~/.network-jobs/</code> and are never sent to a remote API. Discovery fetches public career pages, nothing more.</div></details>
+    <details class="rv"><summary>Which agents work?</summary><div class="a">Any agent that loads Agent Skills: Claude Code, Cursor, Codex, OpenCode, Pi, Gemini CLI, Hermes, and others. One <code>setup --agent</code> links all six skills into each of them.</div></details>
+    <details class="rv"><summary>Do I need LinkedIn Premium?</summary><div class="a">No. Use the free export: Settings → Data privacy → Get a copy of your data → Connections only. Then <code>network-jobs import ~/Downloads/Connections.zip</code>.</div></details>
+    <details class="rv"><summary>Which model should I use?</summary><div class="a">Yours. Prefer a stronger model for career-page discovery; mid-tier is usually enough for search and intro drafts.</div></details>
+    <details class="rv"><summary>Does it message people for me?</summary><div class="a">Never. It drafts a forwardable intro email naming a real mutual connection. Review it, send it yourself.</div></details>
+    <details class="rv"><summary>What does it cost?</summary><div class="a">The suite is free and MIT-licensed. You pay only for whatever your own agent model charges in tokens.</div></details>
+  </section>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>$ network-jobs — find jobs where you're already connected</span>
+    <a href="https://github.com/hirefrank/network-jobs">github</a>
+    <a href="https://www.npmjs.com/package/@hirefrank/network-jobs">npm</a>
+    <a href="https://github.com/hirefrank/network-jobs/blob/main/LICENSE">MIT</a>
+    <span class="sig">not affiliated with LinkedIn · design A / switchboard</span>
+  </div>
+</footer>
+
+<script>
+document.querySelectorAll('[data-tab]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-selected', b === btn ? 'true' : 'false'));
+    document.querySelectorAll('[data-pane]').forEach(p => { p.hidden = p.dataset.pane !== btn.dataset.tab; });
+  });
+});
+document.querySelectorAll('[data-copy]').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const text = btn.dataset.copy;
+    try { await navigator.clipboard.writeText(text); }
+    catch (e) {
+      const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); } catch (_) {} ta.remove();
+    }
+    const old = btn.textContent; btn.textContent = 'copied'; setTimeout(() => btn.textContent = old, 1200);
+  });
+});
+const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { threshold: 0.08 });
+document.querySelectorAll('.rv').forEach(el => io.observe(el));
+</script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+name = "network-jobs-landing"
+main = "src/index.ts"
+compatibility_date = "2026-09-20"
+compatibility_flags = ["nodejs_compat"]
+account_id = "6034f1c5d23e5503f6573740480cf0d6"
+workers_dev = true
+preview_urls = true
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# Production routes (most-specific wins, so these coexist with the main
+# hirefrank.com site like bfs-lunch-menu does):
+[[routes]]
+pattern = "hirefrank.com/network-jobs*"
+zone_name = "hirefrank.com"
+
+[[routes]]
+pattern = "www.hirefrank.com/network-jobs*"
+zone_name = "hirefrank.com"
+
+[dev]
+ip = "0.0.0.0"
+port = 45455
+
+[observability]
+enabled = true
+head_sampling_rate = 1

@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Network Jobs — find jobs where you're already connected</title>
+<meta name="description" content="Local-first agent skill suite: turn your LinkedIn graph into a private job corpus, rank openings, and draft warm intros. No cloud, no account.">
+<link rel="canonical" href="https://hirefrank.com/network-jobs/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#060a16">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="hirefrank">
+<meta property="og:title" content="Network Jobs — find jobs where you're already connected">
+<meta property="og:description" content="Local-first agent skill suite: turn your LinkedIn graph into a private job corpus, rank openings, and draft warm intros. No cloud, no account.">
+<meta property="og:url" content="https://hirefrank.com/network-jobs/">
+<meta property="og:image" content="https://hirefrank.com/network-jobs/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Network Jobs — find jobs where you're already connected">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Network Jobs — find jobs where you're already connected">
+<meta name="twitter:description" content="Local-first agent skill suite: turn your LinkedIn graph into a private job corpus, rank openings, and draft warm intros. No cloud, no account.">
+<meta name="twitter:image" content="https://hirefrank.com/network-jobs/og-image.png">
+<link rel="icon" href="/network-jobs/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/network-jobs/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="/network-jobs/favicon-16.png" sizes="16x16" type="image/png">
+<link rel="apple-touch-icon" href="/network-jobs/apple-touch-icon.png">
+<link rel="manifest" href="/network-jobs/site.webmanifest">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "Network Jobs", "url": "https://hirefrank.com/network-jobs/", "description": "Local-first agent skill suite: turn your LinkedIn graph into a private job corpus, rank openings, and draft warm intros. No cloud, no account.", "applicationCategory": "BusinessApplication", "operatingSystem": "macOS, Linux", "license": "https://github.com/hirefrank/network-jobs/blob/main/LICENSE", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "author": {"@type": "Organization", "name": "hirefrank", "url": "https://hirefrank.com"}, "codeRepository": "https://github.com/hirefrank/network-jobs", "downloadUrl": "https://www.npmjs.com/package/@hirefrank/network-jobs"}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;800&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #060a16;
+  --bg2: #0a1022;
+  --panel: rgba(13, 20, 40, .72);
+  --ink: #eef2ff;
+  --dim: #9aa5c4;
+  --faint: #5a6584;
+  --lime: #c8f04b;
+  --cyan: #5eead4;
+  --violet: #a78bfa;
+  --line: rgba(148, 163, 200, .16);
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  --disp: "Sora", system-ui, sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body { background: var(--bg); color: var(--ink); font-family: var(--disp); font-size: 15.5px; line-height: 1.65; overflow-x: hidden; }
+::selection { background: var(--lime); color: #06130a; }
+a { color: var(--lime); }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 1.5rem; position: relative; z-index: 1; }
+section { padding: 4.5rem 0; scroll-margin-top: 3.5rem; }
+code, pre, .mono { font-family: var(--mono); }
+
+/* ---------- nav ---------- */
+nav { position: sticky; top: 0; z-index: 50; background: rgba(6,10,22,.82); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+nav .wrap { display: flex; align-items: center; gap: 1.4rem; height: 3.75rem; }
+.brand { display: flex; align-items: center; gap: .6rem; text-decoration: none; color: var(--ink); font-weight: 800; letter-spacing: -.01em; }
+.brand svg { display: block; }
+.navlinks { display: flex; gap: 1.25rem; margin-left: auto; font-size: .82rem; font-weight: 600; }
+.navlinks a { color: var(--dim); text-decoration: none; }
+.navlinks a:hover { color: var(--lime); }
+.pill { font-family: var(--mono); font-size: .7rem; color: var(--lime); border: 1px solid rgba(200,240,75,.4); border-radius: 999px; padding: .2rem .7rem; white-space: nowrap; }
+@media (max-width: 700px) { .navlinks { display: none; } }
+
+/* ---------- hero ---------- */
+.hero { position: relative; padding: 5.5rem 0 4rem; overflow: clip; }
+#stars { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; opacity: .9; }
+.hero .wrap { z-index: 1; }
+.eyebrow { font-family: var(--mono); font-size: .74rem; letter-spacing: .22em; text-transform: uppercase; color: var(--cyan); margin-bottom: 1.2rem; display: flex; align-items: center; gap: .7rem; }
+.eyebrow::before { content: ""; width: 2rem; height: 1px; background: var(--cyan); display: inline-block; }
+h1 { font-weight: 800; font-size: clamp(2.3rem, 6vw, 4.3rem); line-height: 1.0; letter-spacing: -.03em; margin-bottom: 1.2rem; max-width: 16ch; }
+h1 .grad { background: linear-gradient(92deg, var(--lime), var(--cyan)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.dek { color: var(--dim); max-width: 62ch; font-size: 1.02rem; margin-bottom: 2rem; }
+.dek strong { color: var(--ink); }
+
+/* telemetry strip */
+.tele { display: flex; gap: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--panel); backdrop-filter: blur(8px); margin-bottom: 1.6rem; }
+.tele div { flex: 1; padding: .9rem 1.1rem; border-right: 1px solid var(--line); }
+.tele div:last-child { border-right: 0; }
+.tele b { display: block; font-size: 1.35rem; font-weight: 800; color: var(--lime); }
+.tele span { font-family: var(--mono); font-size: .68rem; color: var(--dim); letter-spacing: .08em; text-transform: uppercase; }
+@media (max-width: 640px) { .tele { flex-wrap: wrap; } .tele div { flex: 1 1 40%; border-bottom: 1px solid var(--line); } }
+
+/* install console */
+.console { background: rgba(4, 8, 20, .85); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: 0 24px 80px rgba(0,0,0,.5), 0 0 120px rgba(94,234,212,.06); backdrop-filter: blur(8px); }
+.console .bar { display: flex; gap: .5rem; align-items: center; padding: .7rem 1rem; border-bottom: 1px solid var(--line); }
+.dot { width: .65rem; height: .65rem; border-radius: 50%; background: #2a3350; }
+.console .tabs { margin-left: auto; display: flex; gap: .3rem; }
+.console .tabs button { font-family: var(--mono); font-size: .72rem; background: none; border: 1px solid transparent; color: var(--dim); border-radius: 999px; padding: .3rem .8rem; cursor: pointer; }
+.console .tabs button[aria-selected="true"] { color: var(--bg); background: var(--lime); font-weight: 700; }
+.cmd { display: flex; align-items: center; gap: .7rem; padding: .85rem 1.1rem; font-size: .88rem; border-bottom: 1px dashed rgba(148,163,200,.12); }
+.cmd:last-of-type { border-bottom: 0; }
+.cmd .ps { color: var(--lime); user-select: none; }
+.cmd code { color: var(--ink); overflow-x: auto; white-space: nowrap; }
+.copybtn { margin-left: auto; font-family: var(--mono); font-size: .7rem; background: rgba(200,240,75,.08); border: 1px solid rgba(200,240,75,.35); color: var(--lime); border-radius: 999px; padding: .28rem .8rem; cursor: pointer; flex-shrink: 0; transition: background .15s; }
+.copybtn:hover { background: rgba(200,240,75,.2); }
+.out { padding: .7rem 1.1rem 1rem 2.4rem; font-size: .78rem; color: var(--dim); }
+.out .ok { color: var(--lime); }
+.agentsline { text-align: center; font-size: .78rem; color: var(--faint); margin-top: 1.1rem; }
+/* ---------- hero two lanes: terminal vs agent ---------- */
+.duolane { display: grid; grid-template-columns: 0.95fr 1.05fr; gap: 1.1rem; align-items: stretch; }
+.setup2 { order: -1; }
+@media (max-width: 900px) { .duolane { grid-template-columns: 1fr; } }
+.step-tag { font-family: var(--mono); font-size: .66rem; letter-spacing: .18em; color: var(--faint); text-transform: uppercase; }
+.setup2 { background: rgba(4,8,20,.85); border: 1px solid var(--line); border-radius: 12px; padding: 1.1rem 1.2rem; display: flex; flex-direction: column; box-shadow: 0 24px 80px rgba(0,0,0,.5); backdrop-filter: blur(8px); }
+.setup2 .step-tag { color: var(--lime); }
+.s2sub { font-size: .82rem; color: var(--dim); margin-top: .35rem; }
+.composer { margin: .9rem 0 .2rem; background: rgba(200,240,75,.06); border: 1px dashed rgba(200,240,75,.5); border-radius: 10px; padding: .95rem 1.05rem; display: flex; align-items: center; gap: .8rem; }
+.composer code { font-family: var(--disp); font-size: .88rem; font-weight: 500; flex: 1; }
+.copyprompt { margin: .9rem 0 .2rem; font-family: var(--disp); font-weight: 600; font-size: .95rem; background: rgba(200,240,75,.1); border: 1px solid rgba(200,240,75,.5); color: var(--lime); border-radius: 10px; padding: .85rem 1.2rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: .6rem; width: 100%; }
+.copyprompt:hover { background: rgba(200,240,75,.2); }
+.s2note { font-size: .8rem; color: var(--dim); margin-top: auto; padding-top: .8rem; }
+.s2agents { font-size: .72rem; color: var(--faint); margin-top: .6rem; }
+
+/* ---------- section heads ---------- */
+.shead { margin-bottom: 2rem; }
+.shead .k { font-family: var(--mono); font-size: .72rem; letter-spacing: .22em; color: var(--cyan); text-transform: uppercase; display: block; margin-bottom: .5rem; }
+.shead h2 { font-size: clamp(1.5rem, 3.2vw, 2.2rem); font-weight: 800; letter-spacing: -.02em; }
+.shead p { color: var(--dim); max-width: 66ch; margin-top: .4rem; }
+
+/* ---------- transcripts ---------- */
+.thread { display: grid; gap: 1.4rem; }
+.msg { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 1.25rem 1.4rem; backdrop-filter: blur(8px); }
+.msg .meta { display: flex; align-items: center; gap: .7rem; margin-bottom: .7rem; font-family: var(--mono); font-size: .72rem; }
+.avatar { width: 1.7rem; height: 1.7rem; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: .75rem; flex-shrink: 0; }
+.you .avatar { background: rgba(200,240,75,.15); color: var(--lime); border: 1px solid rgba(200,240,75,.5); }
+.agent .avatar { background: rgba(94,234,212,.12); color: var(--cyan); border: 1px solid rgba(94,234,212,.45); }
+.msg .who { color: var(--dim); }
+.msg .chan { margin-left: auto; color: var(--faint); }
+.msg p.prompt { font-size: 1.02rem; font-weight: 600; }
+/* typed utterances: right-aligned bubbles, uniformly quoted */
+.msg.you .meta { flex-direction: row-reverse; }
+.msg.you .meta .chan { margin-left: 0; margin-right: auto; }
+.msg.you .prompt {
+  margin-left: auto; max-width: 88%; width: fit-content;
+  background: rgba(200,240,75,.08); border: 1px solid rgba(200,240,75,.35);
+  border-radius: 14px 14px 4px 14px; padding: .65rem 1rem;
+}
+.msg.you .prompt::before { content: open-quote; color: var(--lime); }
+.msg.you .prompt::after { content: close-quote; color: var(--lime); }
+.legend { display: flex; gap: 1.2rem; flex-wrap: wrap; font-family: var(--mono); font-size: .7rem; color: var(--faint); margin: .9rem 0 1.6rem; }
+.legend i { font-style: normal; display: inline-flex; align-items: center; gap: .45rem; }
+.sw-you { display: inline-block; max-width: 10rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 1px solid rgba(200,240,75,.35); border-radius: 10px 10px 3px 10px; padding: .1rem .55rem; color: var(--ink); }
+.sw-you::before { content: open-quote; color: var(--lime); } .sw-you::after { content: close-quote; color: var(--lime); }
+.sw-tool { display: inline-block; border: 1px solid var(--line); border-radius: 6px; padding: .1rem .55rem; color: var(--cyan); }
+.sw-agent { display: inline-block; border: 1px solid var(--line); background: rgba(148,163,200,.07); border-radius: 10px 10px 10px 3px; padding: .1rem .55rem; color: var(--ink); }
+.tool { margin-top: .9rem; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.tool .th { font-family: var(--mono); font-size: .72rem; color: var(--cyan); background: rgba(94,234,212,.06); padding: .5rem .9rem; border-bottom: 1px solid var(--line); }
+.tool .tb { padding: .8rem .9rem; font-size: .84rem; }
+.trow { display: flex; gap: .8rem; padding: .25rem 0; }
+.trow .k { font-family: var(--mono); font-size: .76rem; color: var(--faint); min-width: 7.5rem; }
+.trow .v { color: var(--ink); }
+.trow .v.hot { color: var(--lime); font-weight: 700; }
+.meter { height: .45rem; border-radius: 999px; background: rgba(148,163,200,.15); margin-top: .3rem; overflow: hidden; }
+.meter i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--cyan), var(--lime)); }
+.job { display: flex; gap: .8rem; align-items: baseline; padding: .35rem 0; }
+.job .pts { font-family: var(--mono); font-weight: 700; color: var(--lime); }
+.fwd { margin-top: .9rem; border: 1px dashed rgba(167,139,250,.55); border-radius: 10px; padding: .85rem 1rem; font-size: .85rem; background: rgba(167,139,250,.06); }
+.fwd b { color: var(--violet); }
+.th { display: flex; gap: .6rem; align-items: baseline; }
+.th .stat { margin-left: auto; color: var(--faint); white-space: nowrap; }
+.areply { margin-top: .85rem; font-size: .9rem; margin-right: auto; max-width: 88%; width: fit-content; background: rgba(148,163,200,.07); border: 1px solid var(--line); border-radius: 14px 14px 14px 4px; padding: .65rem 1rem; }
+.areply b { color: var(--lime); }
+.prompt + .prompt { margin-top: .9rem; }
+.apath { display: block; font-family: var(--mono); font-size: .66rem; color: var(--faint); margin-top: .35rem; }
+.raw { margin-top: .7rem; border: 1px solid var(--line); border-radius: 8px; }
+.raw summary { cursor: pointer; list-style: none; font-family: var(--mono); font-size: .7rem; color: var(--cyan); padding: .45rem .8rem; }
+.raw summary::-webkit-details-marker { display: none; }
+.raw summary::before { content: "▸ "; }
+.raw[open] summary::before { content: "▾ "; }
+.raw pre { padding: .1rem .8rem .8rem; font-size: .7rem; line-height: 1.6; color: var(--dim); overflow-x: auto; }
+.raw pre .hl { color: var(--lime); }
+/* ---------- session replay player ---------- */
+.player { background: rgba(4,8,20,.88); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: 0 24px 80px rgba(0,0,0,.5); backdrop-filter: blur(8px); }
+.pbar { display: flex; align-items: center; gap: .7rem; padding: .65rem 1.1rem; border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: .72rem; color: var(--dim); }
+.rec { width: .55rem; height: .55rem; border-radius: 50%; background: #ff5d5d; display: inline-block; animation: pulse 1.6s infinite; }
+@keyframes pulse { 50% { opacity: .2; } }
+.ptime { margin-left: auto; color: var(--faint); }
+.screen { padding: 1.2rem 1.3rem; height: 30rem; overflow-y: auto; display: flex; flex-direction: column; gap: .9rem; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.screen::-webkit-scrollbar { width: 8px; }
+.screen::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
+.tbubble-you { margin-left: auto; max-width: 88%; width: fit-content; background: rgba(200,240,75,.08); border: 1px solid rgba(200,240,75,.35); border-radius: 14px 14px 4px 14px; padding: .6rem 1rem; font-weight: 600; }
+.tbubble-you::before { content: open-quote; color: var(--lime); }
+.tbubble-you::after { content: close-quote; color: var(--lime); }
+.tbubble-agent { margin-right: auto; max-width: 88%; width: fit-content; background: rgba(148,163,200,.07); border: 1px solid var(--line); border-radius: 14px 14px 14px 4px; padding: .6rem 1rem; font-size: .9rem; }
+.tbubble-agent b { color: var(--lime); }
+.caret::after { content: "▊"; color: var(--lime); animation: blink 1s steps(1) infinite; margin-left: 1px; }
+@keyframes blink { 50% { opacity: 0; } }
+.spin { display: inline-block; width: .68rem; height: .68rem; border: 2px solid rgba(94,234,212,.25); border-top-color: var(--cyan); border-radius: 50%; animation: rot .7s linear infinite; vertical-align: -1px; margin-right: .5rem; }
+@keyframes rot { to { transform: rotate(360deg); } }
+.transport { display: flex; align-items: center; gap: .6rem; padding: .65rem 1.1rem; border-top: 1px solid var(--line); }
+.transport button { font-family: var(--mono); font-size: .78rem; background: rgba(200,240,75,.08); border: 1px solid rgba(200,240,75,.35); color: var(--lime); border-radius: 8px; min-width: 2.5rem; padding: .3rem .6rem; cursor: pointer; }
+.transport button:hover { background: rgba(200,240,75,.18); }
+.track { flex: 1; height: .35rem; border-radius: 999px; background: rgba(148,163,200,.15); overflow: hidden; }
+.track i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--cyan), var(--lime)); transition: width .2s linear; }
+.why { font-family: var(--mono); font-size: .66rem; color: var(--faint); margin: .2rem 0 .35rem; }
+.pcap { padding: .65rem 1.2rem .1rem; font-family: var(--mono); font-size: .68rem; color: var(--faint); }
+.srt { margin: .7rem 1.1rem 1.1rem; border: 1px solid var(--line); border-radius: 8px; }
+.srt summary { cursor: pointer; list-style: none; font-family: var(--mono); font-size: .7rem; color: var(--cyan); padding: .5rem .9rem; }
+.srt summary::-webkit-details-marker { display: none; }
+.srt summary::before { content: "▸ "; }
+.srt[open] summary::before { content: "▾ "; }
+.srt div { padding: 0 .9rem .9rem; font-size: .8rem; color: var(--dim); white-space: pre-wrap; }
+
+/* ---------- pipeline nodes ---------- */
+.chain { display: grid; grid-template-columns: repeat(5, 1fr); gap: .7rem; }
+.node { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1rem .95rem; position: relative; backdrop-filter: blur(8px); }
+.node:not(:last-child)::after { content: "→"; position: absolute; right: -.85rem; top: 50%; transform: translateY(-50%); color: var(--lime); z-index: 2; }
+.node .n { font-family: var(--mono); font-size: .66rem; color: var(--cyan); letter-spacing: .14em; }
+.node h3 { font-size: .86rem; margin: .35rem 0; }
+.node code { display: block; font-size: .68rem; color: var(--lime); margin-bottom: .35rem; }
+.node p { font-size: .76rem; color: var(--dim); }
+@media (max-width: 900px) { .chain { grid-template-columns: 1fr 1fr; } .node:not(:last-child)::after { content: ""; } }
+@media (max-width: 520px) { .chain { grid-template-columns: 1fr; } }
+.gate { margin-top: 1rem; border: 1px solid rgba(200,240,75,.4); background: rgba(200,240,75,.06); border-radius: 12px; padding: .95rem 1.15rem; font-size: .88rem; }
+.gate b { color: var(--lime); }
+
+/* ---------- modules ---------- */
+.mods { display: grid; grid-template-columns: repeat(3, 1fr); gap: .9rem; }
+.mod { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1.2rem 1.2rem 1.3rem; position: relative; overflow: hidden; transition: transform .18s ease, border-color .18s ease; backdrop-filter: blur(8px); }
+.mod::before { content: ""; position: absolute; top: 0; left: 1.2rem; right: 1.2rem; height: 2px; background: linear-gradient(90deg, var(--lime), transparent); opacity: .7; }
+.mod:hover { transform: translateY(-4px); border-color: rgba(200,240,75,.45); }
+.mod .port { font-family: var(--mono); font-size: .66rem; letter-spacing: .14em; color: var(--cyan); text-transform: uppercase; }
+.mod h3 { font-size: .98rem; margin: .4rem 0; }
+.mod p { font-size: .82rem; color: var(--dim); }
+@media (max-width: 820px) { .mods { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 540px) { .mods { grid-template-columns: 1fr; } }
+
+/* ---------- cli ---------- */
+.ref { background: rgba(4,8,20,.85); border: 1px solid var(--line); border-radius: 12px; padding: .6rem 1.3rem; backdrop-filter: blur(8px); }
+.ref .row { display: flex; gap: 1.2rem; padding: .55rem 0; border-bottom: 1px dashed rgba(148,163,200,.12); font-size: .86rem; }
+.ref .row:last-child { border: 0; }
+.ref .c { font-family: var(--mono); color: var(--lime); white-space: nowrap; }
+.ref .d { color: var(--dim); }
+
+/* ---------- principles / faq / footer ---------- */
+.duo { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem; }
+.fact { border: 1px solid var(--line); border-radius: 12px; padding: 1.15rem 1.25rem; background: var(--panel); backdrop-filter: blur(8px); }
+.fact h3 { font-size: .92rem; margin-bottom: .3rem; }
+.fact h3 .tick { color: var(--lime); margin-right: .4rem; }
+.fact p { font-size: .83rem; color: var(--dim); }
+.fact code { font-size: .75rem; color: var(--cyan); }
+@media (max-width: 700px) { .duo { grid-template-columns: 1fr; } }
+details { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); margin-bottom: .6rem; backdrop-filter: blur(8px); }
+summary { cursor: pointer; list-style: none; padding: .95rem 1.2rem; font-weight: 600; font-size: .94rem; display: flex; gap: .7rem; align-items: center; }
+summary::-webkit-details-marker { display: none; }
+summary .pm { color: var(--lime); font-family: var(--mono); }
+details div { padding: 0 1.2rem 1.1rem 2.6rem; color: var(--dim); font-size: .88rem; }
+details div code { font-size: .78rem; color: var(--cyan); }
+footer { border-top: 1px solid var(--line); padding: 2.5rem 0 3rem; margin-top: 2rem; }
+footer .wrap { display: flex; gap: 1.4rem; flex-wrap: wrap; font-size: .8rem; color: var(--faint); align-items: center; }
+footer a { color: var(--dim); text-decoration: none; } footer a:hover { color: var(--lime); }
+footer .end { margin-left: auto; font-family: var(--mono); font-size: .72rem; }
+
+.rv { opacity: 0; transform: translateY(16px); transition: opacity .55s ease, transform .55s ease; }
+.rv.in { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) { .rv { opacity: 1; transform: none; transition: none; } }
+</style>
+</head>
+<body>
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="4" cy="11" r="2.4" fill="#c8f04b"/><circle cx="11" cy="5" r="2.4" fill="#5eead4"/><circle cx="11" cy="17" r="2.4" fill="#5eead4"/><circle cx="18" cy="11" r="2.4" fill="#a78bfa"/><path d="M6 10l3-3.6M6 12l3 3.6M13 6.4l3 3.2M13 15.6l3-3.2" stroke="#9aa5c4" stroke-width="1.2"/></svg>network-jobs</a>
+    <div class="navlinks"><a href="#flow">flow</a><a href="#mods">skills</a><a href="#live">replay</a><a href="#cli">cli</a><a href="#faq">faq</a></div>
+    <span class="pill">v1.3.1 · MIT</span>
+  </div>
+</nav>
+
+<div class="hero" id="top">
+  <canvas id="stars" aria-hidden="true"></canvas>
+  <div class="wrap">
+    <p class="eyebrow">local-first skill suite · 6 skills · 0 cloud accounts</p>
+    <h1>Find jobs where you're <span class="grad">already connected.</span></h1>
+    <p class="dek">Network Jobs turns your LinkedIn graph into a <strong>private job corpus</strong>. Your agent discovers openings at companies you know, ranks them against your preferences, and drafts <strong>forwardable warm intros</strong> — all on your machine.</p>
+    <div class="tele rv">
+      <div><b>312</b><span>connections parsed</span></div>
+      <div><b>87</b><span>companies mapped</span></div>
+      <div><b>6</b><span>skills, one loop</span></div>
+      <div><b>0</b><span>bytes uploaded</span></div>
+    </div>
+    <div class="duolane">
+    <div class="console rv">
+      <div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="step-tag" style="margin-left:.5rem">alternative · terminal</span><button class="copybtn" data-copy="npm i -g @hirefrank/network-jobs@latest && network-jobs setup --agent auto">copy</button>
+      </div>
+      <div data-pane="npm">
+        <div class="cmd"><span class="ps">$</span><code>npm i -g @hirefrank/network-jobs@latest</code></div>
+        <div class="cmd"><span class="ps">$</span><code>network-jobs setup --agent auto</code></div>
+        <div class="out"><span class="ok">✓</span> 6/6 skills linked · <span class="ok">✓</span> ~/.network-jobs seeded · <span class="ok">✓</span> agent-browser ready</div>
+      </div>
+    </div>
+    <div class="setup2 rv">
+      <span class="step-tag">recommended · paste into any agent</span>
+      <p class="s2sub">One prompt carries the whole setup — install check included. Nothing to install first.</p>
+      <div><button class="copyprompt" data-copy="Set up Network Jobs on this machine: if the network-jobs CLI isn't installed, run npm i -g @hirefrank/network-jobs@latest then network-jobs setup --agent auto. Then follow https://github.com/hirefrank/network-jobs/blob/main/skills/network-jobs-setup/SKILL.md — ask me for my résumé and LinkedIn Connections export, import both, and run the preferences interview.">Copy setup prompt</button></div>
+      <p class="s2note">Your agent installs the CLI, links the skills, and walks the rest with you — profile, preferences, imports. Two minutes, once.</p>
+    </div>
+  </div>
+  <p class="agentsline">Works with Claude Code · Cursor · Codex · OpenCode · Muse · Pi · Gemini CLI · Grok Bot · Instinct</p>
+  </div>
+</div>
+
+<div class="wrap">
+  
+
+  <section id="flow">
+    <div class="shead"><span class="k">// 01 — the flow</span><h2>Five nodes, one rule.</h2></div>
+    <div class="chain">
+      <div class="node rv"><div class="n">NODE 01</div><h3>Résumé → profile</h3><code>setup</code><span class="apath">→ profile.json · preferences.json</span><p>Prefs interview grounded in your background.</p></div>
+      <div class="node rv"><div class="n">NODE 02</div><h3>ZIP → graph</h3><code>import</code><span class="apath">→ companies.json · 87 companies</span><p>Free export becomes a graph, locally.</p></div>
+      <div class="node rv"><div class="n">NODE 03</div><h3>Discover → triage</h3><code>discover</code><span class="apath">→ triage/careers-*/ · review me</span><p>Career pages staged for review. Always.</p></div>
+      <div class="node rv"><div class="n">NODE 04</div><h3>Confirm → ingest</h3><code>ingest</code><span class="apath">→ corpus/ · totalJobs 5</span><p>Your word turns listings into corpus.</p></div>
+      <div class="node rv"><div class="n">NODE 05</div><h3>Search → intro</h3><code>intros</code><span class="apath">→ search/intros.json · email draft</span><p>Ranked roles, forwarders, warm email.</p></div>
+    </div>
+    <div class="gate rv"><b>RULE:</b> discover only stages — nothing enters your corpus until you explicitly say so.</div>
+  </section>
+
+  <section id="mods">
+    <div class="shead"><span class="k">// 02 — modules</span><h2>Six skills, one loop.</h2></div>
+    <div class="mods">
+      <div class="mod rv"><div class="port">in · profile</div><h3>network-jobs-setup</h3><p>Résumé → profile + preferences interview: location, remote/hybrid, IC vs manager, former employers.</p></div>
+      <div class="mod rv"><div class="port">in · graph</div><h3>network-jobs-import</h3><p>Connections ZIP → local company graph. No PII leaves the machine.</p></div>
+      <div class="mod rv"><div class="port">out · triage</div><h3>careers-discover</h3><p>Model-driven career pages, JS boards via agent-browser. Stages, never ingests.</p></div>
+      <div class="mod rv"><div class="port">in · corpus</div><h3>jobs-ingest</h3><p>Promotes a confirmed batch into searchable shards. Only on your word.</p></div>
+      <div class="mod rv"><div class="port">out · ranked</div><h3>network-jobs</h3><p>Prefs-aware search with scores; semantic matching via embed-setup.</p></div>
+      <div class="mod rv"><div class="port">out · email</div><h3>intro-email-generator</h3><p>Forwardable warm intros through real mutuals. You send.</p></div>
+    </div>
+  </section>
+
+<section id="live">
+    <div class="shead"><span class="k">// 03 — session replay</span><h2>One session, replayed end to end.</h2><p>Import → discover → ingest → search → warm intro. Press play — timings compressed.</p></div>
+    <div class="player rv" id="player">
+      <div class="pbar"><span class="ptitle"><i class="rec"></i> session replay</span><span class="ptime" id="ptime">0:00 / 0:00</span></div>
+      <div class="screen" id="screen" aria-label="Replay of an agent session"></div>
+      <div class="transport" id="transport">
+        <button id="btnpp" aria-label="play or pause">⏸</button>
+        <button id="btnrs" aria-label="replay">↺</button>
+        <div class="track"><i id="prog"></i></div>
+        <button id="btnsp" aria-label="playback speed">1×</button>
+      </div>
+      <p class="pcap">Reconstructed from real commands · timings compressed · nothing leaves ~/.network-jobs/</p>
+      <details class="srt"><summary>read the full transcript as text</summary><div>you: Import my LinkedIn zip at ~/Downloads/Connections.zip
+agent: [import] 308 connections kept (4 ignored) · 87 companies — Stripe (14), Figma (9), Notion (7)
+agent: Done — 87 companies mapped. Say the word and I'll go find who's hiring.
+you: Find open roles at my top 5 companies
+agent: [careers-discover] 12 of 30 match prefs staged under triage/ · 0 ingested
+agent: Staged, not ingested. Skim triage/ and tell me which batch to take.
+you: ingest the Stripe batch
+agent: [jobs-ingest] 5 jobs enter the corpus (Senior Product, NYC + remote) · totalJobs 5
+agent: Corpus updated. Ask me to search it whenever you're ready.
+you: Senior PM roles, NYC, remote-friendly
+agent: [network-jobs search] 2 of 5 match prefs — 21 Senior Product Manager @ Stripe, 17 Senior PM Growth @ Figma
+agent: [intro] via Dan (ex-Stripe, 1st-degree) → Maya at Stripe. The agent drafts; you send.</div></details>
+    </div>
+  </section>
+
+  <section id="cli">
+    <div class="shead"><span class="k">// 04 — cli reference</span><h2>Small surface, sharp tools.</h2><p>For install, update, doctor, and imports. Everything else lives in the agent.</p></div>
+    <div class="ref rv">
+      <div class="row"><span class="c">setup · update · doctor</span><span class="d">install skills · refresh suite · health check</span></div>
+      <div class="row"><span class="c">import &lt;zip-or-csv&gt;</span><span class="d">LinkedIn connections → company graph</span></div>
+      <div class="row"><span class="c">profile import · show · clear</span><span class="d">résumé in, identity out (PDF / DOCX / MD / TXT)</span></div>
+      <div class="row"><span class="c">search · intros · companies</span><span class="d">ranked roles · forwarders · graph stats</span></div>
+      <div class="row"><span class="c">refresh · demo · embed-setup</span><span class="d">re-crawl · synthetic demo · semantic search</span></div>
+      <div class="row"><span class="c">corpus clear · reset · uninstall</span><span class="d">wipe jobs · unlink skills · full remove</span></div>
+    </div>
+  </section>
+
+  <section id="local">
+    <div class="shead"><span class="k">// 05 — guarantees</span><h2>Local-first, for real.</h2></div>
+    <div class="duo">
+      <div class="fact rv"><h3><span class="tick">✓</span>No cloud account</h3><p>Everything in <code>~/.network-jobs/</code> — connections, corpus, profile, prefs, résumé. No hosted API exists.</p></div>
+      <div class="fact rv"><h3><span class="tick">✓</span>Your data stays home</h3><p>Skills read local files. The only network calls are public career pages.</p></div>
+      <div class="fact rv"><h3><span class="tick">✓</span>Model-agnostic</h3><p>Stronger models discover better; mid-tier is plenty for search and intros.</p></div>
+      <div class="fact rv"><h3><span class="tick">✓</span>Free &amp; MIT</h3><p>Open source, local-free. Only your own agent's tokens cost anything.</p></div>
+    </div>
+  </section>
+
+  <section id="faq">
+    <div class="shead"><span class="k">// 06 — faq</span><h2>Asked often.</h2></div>
+    <details class="rv" open><summary><span class="pm">+</span>Does anything get uploaded anywhere?</summary><div>No. Profile, résumé, and connections live in <code>~/.network-jobs/</code> and are never sent to a remote API.</div></details>
+    <details class="rv"><summary><span class="pm">+</span>Which agents work?</summary><div>Any agent that can read a skill file and run a local command — terminal coders (Claude Code, Cursor, Codex, OpenCode, Muse…), desktop agents (Grok Bot), always-on assistants (Instinct), and others. If it reads skills and runs commands, it works.</div></details>
+    <details class="rv"><summary><span class="pm">+</span>Does it suit long-running agents?</summary><div>That's what local files are for. Triage batches, corpus shards, and <code>manifest.json</code> persist between runs, so a background agent — Muse background agents, an always-on assistant — resumes exactly where it left off. Nothing lives in a cloud queue that can time out.</div></details>
+    <details class="rv"><summary><span class="pm">+</span>Do I need LinkedIn Premium?</summary><div>No. Free export: Settings → Data privacy → Get a copy of your data → Connections only. Then <code>network-jobs import ~/Downloads/Connections.zip</code>.</div></details>
+    <details class="rv"><summary><span class="pm">+</span>Which model should I use?</summary><div>Yours. Stronger for discovery; mid-tier is usually enough for search and drafts.</div></details>
+    <details class="rv"><summary><span class="pm">+</span>Does it message people for me?</summary><div>Never. It drafts a forwardable intro naming a real mutual. You review, you send.</div></details>
+    <details class="rv"><summary><span class="pm">+</span>What does it cost?</summary><div>Free and MIT-licensed. You pay only for your own agent's tokens.</div></details>
+    <details class="rv"><summary><span class="pm">+</span>Is there a zero-install option?</summary><div>Yes — <code>npx --yes @hirefrank/network-jobs@latest setup --agent auto</code> runs setup with no global install. The launcher still lands on <code>~/.local/bin</code>, so the <code>network-jobs</code> command sticks around.</div></details>
+  </section>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>network-jobs — find jobs where you're already connected</span>
+    <a href="https://github.com/hirefrank/network-jobs">github</a>
+    <a href="https://www.npmjs.com/package/@hirefrank/network-jobs">npm</a>
+    <a href="https://github.com/hirefrank/network-jobs/blob/main/LICENSE">MIT</a>
+    <span>Not affiliated with LinkedIn.</span>
+    <span class="end">© 2026 hirefrank</span>
+  </div>
+</footer>
+
+<script>
+// tabs + copy
+document.querySelectorAll('[data-tab]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-selected', b === btn ? 'true' : 'false'));
+    document.querySelectorAll('[data-pane]').forEach(p => { p.hidden = p.dataset.pane !== btn.dataset.tab; });
+  });
+});
+document.querySelectorAll('[data-copy]').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const text = btn.dataset.copy;
+    try { await navigator.clipboard.writeText(text); }
+    catch (e) {
+      const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); } catch (_) {} ta.remove();
+    }
+    const old = btn.textContent; btn.textContent = 'copied ✓'; setTimeout(() => btn.textContent = old, 1200);
+  });
+});
+// session replay player
+(function () {
+  const screen = document.getElementById('screen');
+  if (!screen) return;
+  const prog = document.getElementById('prog'), ptime = document.getElementById('ptime');
+  const bpp = document.getElementById('btnpp'), brs = document.getElementById('btnrs'), bsp = document.getElementById('btnsp');
+  const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const ROWS = r => r.map(x => `<div class="trow"><span class="k">${x[0]}</span><span class="v${x[2] ? ' hot' : ''}">${x[1]}</span></div>`).join('');
+  const TB = (h, tb) => `<div class="tool"><div class="th">${h[0]} <span class="stat">${h[1]}</span></div><div class="tb"${tb[1] ? '' : ' hidden'}>${tb[0]}</div></div>`;
+  const STEPS = [
+    ['you', 'Import my LinkedIn zip at ~/Downloads/Connections.zip', 900],
+    ['tool', ['└ network-jobs import ~/Downloads/Connections.zip', '✓ 1 call · 640ms',
+      ROWS([['connections', '308 kept · 4 ignored', 1], ['companies', '87 in graph'], ['densest', 'Stripe (14) · Figma (9) · Notion (7)']])], 1700],
+    ['agent', '<b>Done</b> — 87 companies mapped. Say the word and I’ll go find who’s hiring.', 1400],
+    ['you', 'Find open roles at my top 5 companies', 800],
+    ['tool', ['└ careers-discover → triage/careers-stripe-2026-09-29/', '✓ 6 calls · 2.1s',
+      ROWS([['staged', '12 of 30 match prefs', 1], ['ingested', '0 — awaiting your word']])], 1800],
+    ['agent', '<b>Staged, not ingested.</b> Skim triage/ and tell me which batch to take.', 1200],
+    ['you', 'ingest the Stripe batch', 700],
+    ['tool', ['└ jobs-ingest → corpus/', '✓ 1 call · 380ms',
+      ROWS([['ingested', '5 jobs · Senior Product · NYC + remote', 1], ['totalJobs', '5']])], 1400],
+    ['agent', '<b>Corpus updated.</b> Ask me to search it whenever you’re ready.', 1100],
+    ['you', 'Senior PM roles, NYC, remote-friendly', 700],
+    ['tool', ['└ network-jobs search', '✓ 2 of 5 match prefs · 910ms',
+      `<div class="job"><span class="pts">21</span><span>Senior Product Manager — Stripe · NYC/hybrid</span></div><div class="why">matchReasons: category · seniority · query</div><div class="meter"><i style="width:100%"></i></div><div class="job" style="margin-top:.5rem"><span class="pts">17</span><span>Senior PM, Growth — Figma · remote</span></div><div class="why">matchReasons: remote · category · query</div><div class="meter"><i style="width:81%"></i></div>`], 1900],
+    ['block', `<div class="fwd"><b>via Dan (ex-Stripe, 1st-degree) → Maya at Stripe</b><br>Subject: quick intro — Senior PM role at Stripe. Two short paragraphs, one forwardable ask. The agent drafts; <b>you</b> send.</div>`, 2800]
+  ];
+  const fmt = ms => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}`;
+  let run = 0, speed = 1, playing = true, started = false;
+  async function sleep(ms) {
+    ms /= speed;
+    const end = performance.now() + ms;
+    while (performance.now() < end) {
+      if (thisRun !== run) throw 0;
+      while (!playing) { if (thisRun !== run) throw 0; await new Promise(r => setTimeout(r, 60)); }
+      await new Promise(r => setTimeout(r, 25));
+    }
+  }
+  let thisRun = 0;
+  function tick(i, frac, elapsed, total) {
+    prog.style.width = (((i + frac) / STEPS.length) * 100).toFixed(1) + '%';
+    ptime.textContent = `${fmt(elapsed)} / ${fmt(total)}`;
+  }
+  async function play() {
+    const my = ++run; thisRun = my;
+    screen.innerHTML = '';
+    let elapsed = 0;
+    const total = STEPS.reduce((a, s) => a + s[2] + (s[0] === 'you' ? s[1].length * 11 : s[0] === 'agent' ? 500 : 650), 0) + 2200;
+    try {
+      for (let i = 0; i < STEPS.length; i++) {
+        const [kind, body, hold] = STEPS[i];
+        if (kind === 'you') {
+          const el = document.createElement('div');
+          el.className = 'tbubble-you caret';
+          screen.appendChild(el);
+          for (let c = 0; c <= body.length; c++) {
+            if (my !== run) throw 0;
+            while (!playing) { if (my !== run) throw 0; await new Promise(r => setTimeout(r, 60)); }
+            el.textContent = body.slice(0, c);
+            elapsed += 11; tick(i, c / body.length * .5, elapsed, total);
+            await new Promise(r => setTimeout(r, 11 / speed));
+          }
+          el.classList.remove('caret');
+          tick(i, .5, elapsed, total);
+          await sleep(hold);
+          elapsed += hold;
+        } else if (kind === 'tool') {
+          const el = document.createElement('div');
+          el.innerHTML = `<div class="tool"><div class="th"><span class="spin"></span>${body[0]}</div><div class="tb" hidden>${body[2]}</div></div>`;
+          screen.appendChild(el);
+          await sleep(650); elapsed += 650;
+          el.querySelector('.th').innerHTML = `${body[0]} <span class="stat">${body[1]}</span>`;
+          el.querySelector('.tb').hidden = false;
+          tick(i, 1, elapsed, total);
+          await sleep(hold); elapsed += hold;
+        } else if (kind === 'agent') {
+          const el = document.createElement('div');
+          el.className = 'tbubble-agent'; el.textContent = '···';
+          screen.appendChild(el);
+          await sleep(450); elapsed += 450;
+          el.innerHTML = body;
+          tick(i, 1, elapsed, total);
+          await sleep(hold); elapsed += hold;
+        } else {
+          const el = document.createElement('div');
+          el.innerHTML = body;
+          screen.appendChild(el.firstChild);
+          tick(i, 1, elapsed, total);
+          await sleep(hold); elapsed += hold;
+        }
+        if (screen.scrollHeight - screen.scrollTop - screen.clientHeight < 96) {
+          screen.scrollTo({ top: screen.scrollHeight, behavior: 'smooth' });
+        }
+      }
+      tick(STEPS.length, 0, total, total);
+      await sleep(2200);
+      if (my === run && playing) play();
+    } catch (e) { /* superseded */ }
+  }
+  function renderAll() {
+    screen.innerHTML = STEPS.map(s => {
+      if (s[0] === 'you') return `<div class="tbubble-you">${s[1]}</div>`;
+      if (s[0] === 'agent') return `<div class="tbubble-agent">${s[1]}</div>`;
+      if (s[0] === 'tool') return TB([s[1][0], s[1][1]], [s[1][2], true]);
+      return s[1];
+    }).join('');
+    prog.style.width = '100%';
+  }
+  bpp.addEventListener('click', () => { playing = !playing; bpp.textContent = playing ? '⏸' : '▶'; });
+  brs.addEventListener('click', () => { playing = true; bpp.textContent = '⏸'; play(); });
+  bsp.addEventListener('click', () => {
+    speed = speed === 1 ? 2 : speed === 2 ? .5 : 1;
+    bsp.textContent = (speed === .5 ? '½' : speed) + '×';
+  });
+  if (RM) {
+    renderAll();
+    document.getElementById('transport').style.display = 'none';
+    ptime.textContent = 'transcript';
+    return;
+  }
+  new IntersectionObserver(es => {
+    if (es[0].isIntersecting && !started) { started = true; play(); }
+  }, { threshold: 0.25 }).observe(document.getElementById('player'));
+})();
+// reveal
+const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { threshold: 0.08 });
+document.querySelectorAll('.rv').forEach(el => io.observe(el));
+// constellation canvas
+(function () {
+  const cv = document.getElementById('stars');
+  if (!cv || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const ctx = cv.getContext('2d');
+  const hero = cv.parentElement;
+  let W, H, nodes = [], running = true, mouse = { x: -9999, y: -9999 };
+  const COLORS = ['200,240,75', '94,234,212', '167,139,250'];
+  const LABELS = ['you', 'stripe ·14', 'figma ·9', 'notion ·7', 'maya', 'dan', 'pm ·94', 'growth ·88'];
+  function size() {
+    const r = hero.getBoundingClientRect();
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    W = r.width; H = r.height;
+    cv.width = W * dpr; cv.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const n = Math.min(70, Math.floor(W * H / 22000));
+    nodes = Array.from({ length: n }, (_, i) => ({
+      x: Math.random() * W, y: Math.random() * H,
+      vx: (Math.random() - .5) * .35, vy: (Math.random() - .5) * .35,
+      r: Math.random() * 1.6 + .8, c: COLORS[i % 3],
+      label: i < LABELS.length ? LABELS[i] : null
+    }));
+  }
+  function frame() {
+    if (!running) { requestAnimationFrame(frame); return; }
+    ctx.clearRect(0, 0, W, H);
+    for (const p of nodes) {
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < 0 || p.x > W) p.vx *= -1;
+      if (p.y < 0 || p.y > H) p.vy *= -1;
+      const dx = p.x - mouse.x, dy = p.y - mouse.y, d = Math.hypot(dx, dy);
+      if (d < 130 && d > 1) { p.x += dx / d * .6; p.y += dy / d * .6; }
+    }
+    for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
+      const a = nodes[i], b = nodes[j], d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (d < 150) { ctx.strokeStyle = `rgba(148,163,200,${(1 - d / 150) * .28})`; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+    }
+    ctx.font = '10px "JetBrains Mono", monospace';
+    for (const p of nodes) {
+      ctx.fillStyle = `rgba(${p.c},.9)`; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill();
+      if (p.label) { ctx.fillStyle = 'rgba(154,165,196,.85)'; ctx.fillText(p.label, p.x + 7, p.y - 6); }
+    }
+    requestAnimationFrame(frame);
+  }
+  hero.addEventListener('pointermove', e => { const r = cv.getBoundingClientRect(); mouse.x = e.clientX - r.left; mouse.y = e.clientY - r.top; });
+  hero.addEventListener('pointerleave', () => { mouse.x = -9999; mouse.y = -9999; });
+  new IntersectionObserver(es => { running = es[0].isIntersecting; }).observe(hero);
+  addEventListener('resize', size);
+  size(); frame();
+})();
+</script>
+</body>
+</html>
