@@ -11,6 +11,17 @@ from typing import Any
 
 from .text import collapse_ws
 
+# ATS boards emit these in place of a real location. They must parse to *no*
+# locations: "N/A" otherwise splits on "/" into one-char cities ("N", "A"),
+# and the `city in place` substring test in city_matches then matches any
+# preferred place containing that letter (e.g. "n" in "new york").
+UNKNOWN_LOCATION_SENTINELS = {
+    "", "-", "--", "?", "n/a", "n.a.", "na", "none", "null", "nil",
+    "tbd", "tba", "tbc", "unknown", "unspecified", "not specified",
+    "not available", "no location", "location tbd", "multiple locations",
+    "various", "anywhere", "global", "worldwide",
+}
+
 NYC_CITY = {
     "nyc", "new york", "new york city", "new york ny", "manhattan", "brooklyn",
     "queens", "bronx", "staten island", "hoboken", "jersey city", "long island city",
@@ -107,8 +118,11 @@ def _split_raw(raw: str) -> list[str]:
     raw = collapse_ws(raw)
     if not raw:
         return []
+    if _norm_place(raw) in UNKNOWN_LOCATION_SENTINELS:
+        return []
     parts = [p for p in SPLIT_RE.split(raw) if p and p.lower() not in {"and", "or"}]
-    return parts or [raw]
+    parts = [p for p in parts if _norm_place(p) not in UNKNOWN_LOCATION_SENTINELS]
+    return parts or ([raw] if _norm_place(raw) not in UNKNOWN_LOCATION_SENTINELS else [])
 
 
 def parse_one(raw: str) -> dict[str, Any]:

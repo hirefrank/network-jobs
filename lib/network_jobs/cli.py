@@ -173,7 +173,7 @@ def cmd_review_matches(args: argparse.Namespace) -> int:
         return match_listings(
             listings,
             current_prefs,
-            resume_keywords=load_resume_keywords(resume_text, exclude) if resume_text else None,
+            resume_keywords=load_resume_keywords(resume_text, exclude=exclude) if resume_text else None,
             company=company or None,
             resume_vector=resume_vector,
             job_vectors=job_vectors,
