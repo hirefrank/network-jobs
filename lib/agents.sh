@@ -11,6 +11,7 @@ NETWORK_JOBS_AGENT_IDS=(
   pi
   gemini-cli
   hermes-agent
+  muse
   agents
 )
 
@@ -34,6 +35,7 @@ network_jobs_agent_dir() {
     pi) echo "$HOME/.pi/agent/skills" ;;
     gemini-cli) echo "$HOME/.gemini/skills" ;;
     hermes-agent) echo "$HOME/.hermes/skills" ;;
+    muse) echo "$HOME/.agents/skills" ;;
     agents) echo "$HOME/.agents/skills" ;;
     *) return 1 ;;
   esac
@@ -49,17 +51,40 @@ network_jobs_agent_hint() {
     pi) echo "$HOME/.pi" ;;
     gemini-cli) echo "$HOME/.gemini" ;;
     hermes-agent) echo "$HOME/.hermes" ;;
+    muse) echo "$HOME/.agents" ;;
     agents) echo "$HOME/.agents" ;;
     *) return 1 ;;
   esac
 }
 
+# CLI binary proving an agent's presence when it keeps no home dir
+# (Muse reads the shared ~/.agents/skills like the generic agents entry).
+network_jobs_agent_bin() {
+  local name="$1"
+  case "$name" in
+    muse) echo "muse" ;;
+    *) return 1 ;;
+  esac
+}
+
+network_jobs_agent_detected() {
+  local name="$1" hint bin
+  hint="$(network_jobs_agent_hint "$name" || true)"
+  if [[ -n "$hint" && -d "$hint" ]]; then
+    return 0
+  fi
+  bin="$(network_jobs_agent_bin "$name" || true)"
+  if [[ -n "$bin" ]] && command -v "$bin" >/dev/null 2>&1; then
+    return 0
+  fi
+  return 1
+}
+
 network_jobs_detect_agents() {
-  local name hint
+  local name
   local -a found=()
   for name in "${NETWORK_JOBS_AGENT_IDS[@]}"; do
-    hint="$(network_jobs_agent_hint "$name")"
-    if [[ -d "$hint" ]]; then
+    if network_jobs_agent_detected "$name"; then
       found+=("$name")
     fi
   done
@@ -74,7 +99,7 @@ network_jobs_list_agents() {
   for name in "${NETWORK_JOBS_AGENT_IDS[@]}"; do
     dir="$(network_jobs_agent_dir "$name")"
     hint="$(network_jobs_agent_hint "$name")"
-    if [[ -d "$hint" ]]; then
+    if network_jobs_agent_detected "$name"; then
       printf '%s\t%s\tdetected\n' "$name" "$dir"
     else
       printf '%s\t%s\t\n' "$name" "$dir"

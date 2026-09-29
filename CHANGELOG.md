@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.3.2 — 2026-09-29
+
+- **Muse support in setup** — `network-jobs setup --agent auto` detects the
+  `muse` CLI and links all six skills into the shared `~/.agents/skills`
+  (verified: Muse reads that dir). `network-jobs agents` lists it, and
+  detection also works off the binary when no home dir exists.
+- **LICENSE capitalization fix** (hirefrank, lowercase one word).
+- Landing page shipped at `hirefrank.com/network-jobs` (site only, not in
+  the npm tarball).
+
 ## v1.3.1 — 2026-09-29
 
 First npm release (`@hirefrank/network-jobs`). Install with

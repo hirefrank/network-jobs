@@ -1,0 +1,57 @@
+# Network Jobs
+
+Find jobs where you're already connected. Local-first agent skill suite (MIT,
+free): your LinkedIn graph becomes a private job corpus on your machine.
+No cloud, no account.
+
+- Landing: https://hirefrank.com/network-jobs/
+- Repo: https://github.com/hirefrank/network-jobs
+- npm: https://www.npmjs.com/package/@hirefrank/network-jobs
+
+## Setup (recommended): paste into any agent
+
+Set up Network Jobs on this machine: if the network-jobs CLI isn't installed,
+run npm i -g @hirefrank/network-jobs@latest then network-jobs setup --agent
+auto. Then follow
+https://github.com/hirefrank/network-jobs/blob/main/skills/network-jobs-setup/SKILL.md
+— ask me for my résumé and LinkedIn Connections export, import both, and run
+the preferences interview.
+
+## Setup (terminal alternative)
+
+npm i -g @hirefrank/network-jobs@latest && network-jobs setup --agent auto
+
+Works with Claude Code, Cursor, Codex, OpenCode, Muse, Pi, Gemini CLI,
+Hermes, Grok Bot, and any agent that reads skills and runs local commands.
+`setup --agent auto` links every detected agent (Muse included, via the
+shared `~/.agents/skills`); long-running agents resume from local files.
+
+## The loop (in the agent)
+
+1. `network-jobs import <zip-or-csv>` — LinkedIn Connections export becomes
+   `connections/` + `companies/` under `~/.network-jobs/`.
+2. `careers-discover` — model-driven career-page discovery. Stages under
+   `triage/` only. Never ingests on its own.
+3. Human reviews triage and names the batch to take.
+4. `jobs-ingest` — confirmed triage batch becomes normalized `corpus/` shards.
+   Only on explicit confirmation.
+5. `network-jobs search` — prefs-aware ranked search → `search/ranked.json`
+   (`matchScore` + `matchReasons` per job).
+6. `intro-email-generator` — forwardable warm intro through a real mutual →
+   `search/intros.json`. The agent drafts; the human sends.
+
+## Skills (6)
+
+- `network-jobs-setup` — résumé → profile.json + preferences interview.
+- `network-jobs-import` — Connections ZIP → local company graph.
+- `careers-discover` — career pages → triage batches.
+- `jobs-ingest` — confirmed batches → searchable corpus.
+- `network-jobs` — prefs-aware corpus search.
+- `intro-email-generator` — warm intros via real connections.
+
+## Rules
+
+- Data lives under `~/.network-jobs/` (`NETWORK_JOBS_HOME` overrides).
+- Never invent job fields, emails, or connections.
+- Never send profile, résumé, or connections to any remote API.
+- Read `SCHEMA.md` in the repo before writing data files.
