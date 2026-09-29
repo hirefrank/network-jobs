@@ -1,6 +1,6 @@
 # Releasing `@hirefrank/network-jobs`
 
-## Checklist (1.3.1 was cut this way)
+## Checklist (current as of 1.3.2)
 
 1. Bump `version` in `package.json` (use the edit tool — never `npm version`,
    which auto-commits and auto-tags).

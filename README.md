@@ -2,7 +2,7 @@
 
 Local-first agent skill suite: import your résumé and preferences, import LinkedIn connections, discover company career pages, build a personal job corpus, search openings, and draft warm intros — on your machine.
 
-Works with any agent that loads [Agent Skills](https://agentskills.io) (Claude Code, Cursor, Codex, OpenCode, Pi, Grok Bot, Muse, and others).
+Works with any agent that loads [Agent Skills](https://agentskills.io) (Claude Code, Cursor, Codex, OpenCode, Muse, Pi, Gemini CLI, Grok Bot, and others).
 
 ## For agents
 
