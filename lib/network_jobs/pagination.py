@@ -132,8 +132,17 @@ def _normalize_salary_posted(listing: dict[str, Any]) -> None:
 def normalize_listing(raw: Any, source_url: str = "") -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         return None
-    # Already a staged listing
-    if raw.get("title") and (raw.get("url") or raw.get("location")) and "matchScore" not in raw:
+    # Already a staged listing — but only when the fields that prove it are
+    # plain strings. A truthiness check cannot distinguish "has a value" from
+    # "is schema-shaped": Greenhouse boards-api sends location as an object
+    # (and occasionally url as one), which sailed through verbatim and broke
+    # SCHEMA downstream (missing url/externalId, dict where a string belongs).
+    # Non-string shapes fall through to the mapping block, which unpacks them.
+    url_raw = raw.get("url")
+    loc_raw = raw.get("location")
+    has_url = isinstance(url_raw, str) and bool(collapse_ws(url_raw))
+    has_str_loc = isinstance(loc_raw, str) and bool(collapse_ws(loc_raw))
+    if raw.get("title") and (has_url or has_str_loc) and "matchScore" not in raw:
         listing = dict(raw)
         listing.setdefault("sourceUrl", source_url)
         _normalize_salary_posted(listing)

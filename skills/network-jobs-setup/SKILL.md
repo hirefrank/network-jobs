@@ -56,20 +56,32 @@ Always read [SCHEMA.md](../../SCHEMA.md) first.
    |-----------|----------|
    | Work mode | remote / hybrid / onsite — and if hybrid/onsite, **where** (never “any office”) |
    | Location | cities → map to a corpus location bucket (`nyc`, `sf`, `la`, `seattle`, `austin`, `boston`, `chicago`, `denver`, `dc`, `remote`, `other`) when clear; fill `onsiteLocations` for in-person willingness |
-   | Role category | from the 15 corpus categories, biased by résumé |
+   | Role category | from the 15 corpus categories, biased by résumé — then **confirm** (see below) |
    | Seniority | senior / mid |
    | Track | `ic` / `manager` / `either` |
    | Company shape | stage, size, industry (from their history + desires) |
    | Former employers | include / exclude / ask — see below |
    | Comp | optional `salaryMin`, or skip |
-   | Must-haves / deal-breakers | e.g. no pure people-mgmt, must have eng partnership |
+   | Must-haves / deal-breakers | e.g. no pure people-mgmt, must have eng partnership — always ask explicitly, then set `dealBreakersConfirmed: true` |
 
    **Dynamic follow-ups** (pick what fits *this* person):
    - IC ↔ manager trajectory
    - Stay in current domain vs pivot (use résumé industries)
    - Startup vs scale-up vs public
    - Individual contributor craft depth vs broader GM/ops
-   - **Former employers** — LinkedIn graphs are dense with connections at places they used to work. From the résumé, list past employers into `formerEmployers`, then ask whether to **include**, **exclude**, or **ask each time** (`formerEmployerPolicy`). Default suggestion: exclude unless they say otherwise.
+    - **Confirm categories — affinity widens silently.** Propose the résumé-derived
+      set, then read it back for confirmation. Warn that each category also
+      accepts its affinity neighbors (e.g. `product` also accepts `engineering`,
+      `data`, `design`, `operations` — see `CATEGORY_AFFINITY`), so extra
+      categories widen the net in directions the user never named. Ask what to
+      drop, not just what to add.
+    - **Always ask deal-breakers explicitly.** Propose candidates from the
+      résumé's anti-signals (domains/roles they have never touched, levels they
+      aged out of), then ask directly — including "none". An empty
+      `dealBreakers` with no confirmation reads as "never asked", and
+      `match-prefs` will warn on it. Set `dealBreakersConfirmed: true` once
+      asked, even when the answer is none.
+    - **Former employers** — LinkedIn graphs are dense with connections at places they used to work. From the résumé, list past employers into `formerEmployers`, then ask whether to **include**, **exclude**, or **ask each time** (`formerEmployerPolicy`). Default suggestion: exclude unless they say otherwise.
    - **Onsite scope** — if they want remote *and* are open to onsite/hybrid, ask *which cities/metros* count. Write those to `onsiteLocations` (and matching buckets). Do not interpret “I’ll consider onsite” as every onsite role globally.
    - Travel, visa/work auth, commute limits — only if relevant
    - Anything the résumé makes surprising (“you’ve been EM for 5 years — still want that?”)

@@ -16,6 +16,7 @@ from .pagination import DEFAULT_MAX_LISTINGS, DEFAULT_MAX_PAGES, paginate, write
 from .paths import data_home
 from .prefs import load_resume_keywords, match_listings, name_tokens
 from .rank import DEFAULT_K, posting_age_days, rank_corpus
+from .review import cluster_matches, explain_leaks
 
 
 def _load_json(path: Path, default: Any) -> Any:
@@ -80,6 +81,10 @@ def _do_match_prefs(
         "nMatches": result["nMatches"],
         "showing": result["showing"],
         "departments": result["departments"],
+        "matchDepartments": result["matchDepartments"],
+        "matchCategories": result["matchCategories"],
+        "reasonCounts": result["reasonCounts"],
+        "warnings": result["warnings"],
         "ingestDefault": "matches",
         "jobs": result["jobs"],
     }
@@ -127,10 +132,118 @@ def cmd_match_prefs(args: argparse.Namespace) -> int:
         "showing": result["showing"],
         "out": str(matches_path),
         "ingestDefault": "matches",
+        "departments": result["departments"],
+        "matchDepartments": result["matchDepartments"],
+        "matchCategories": result["matchCategories"],
+        "reasonCounts": result["reasonCounts"],
+        "warnings": result["warnings"],
     }
-    if args.verbose:
-        quiet["departments"] = result["departments"]
     _dump(quiet, args.verbose)
+    return 0
+
+
+def cmd_review_matches(args: argparse.Namespace) -> int:
+    """Cluster a match-prefs shortlist into job families for empirical vetoing.
+
+    Read-only by default: prints families + leak report. With --veto,
+    appends phrases to preferences.json dealBreakers (marks confirmed),
+    rewrites matches.json, and prints before/after counts.
+    """
+    triage = Path(args.triage_dir).expanduser().resolve()
+    listings_path = Path(args.listings) if args.listings else triage / "index" / "listings.json"
+    listings = _load_json(listings_path, [])
+    if not isinstance(listings, list):
+        print("listings.json must be a JSON array", file=sys.stderr)
+        return 1
+    data = data_home(args.data)
+    prefs_path = Path(args.prefs) if args.prefs else data / "preferences.json"
+    prefs = _load_json(prefs_path, {})
+    if not isinstance(prefs, dict):
+        prefs = {}
+    resume_text = ""
+    resume_path = Path(args.resume) if args.resume else data / "resume" / "text.md"
+    if resume_path.is_file():
+        resume_text = resume_path.read_text()
+    profile = _load_json(data / "profile.json", {})
+    exclude = name_tokens(profile) if isinstance(profile, dict) else set()
+    company = args.company or ""
+
+    def run(current_prefs: dict[str, Any]) -> dict[str, Any]:
+        resume_vector, job_vectors = _match_semantic(data, resume_text)
+        return match_listings(
+            listings,
+            current_prefs,
+            resume_keywords=load_resume_keywords(resume_text, exclude) if resume_text else None,
+            company=company or None,
+            resume_vector=resume_vector,
+            job_vectors=job_vectors,
+        )
+
+    before = run(prefs)
+    vetoes = [v.strip() for v in (args.veto or []) if v and v.strip()]
+    after = None
+    added: list[str] = []
+    if vetoes:
+        current = [str(x) for x in prefs.get("dealBreakers") or []]
+        have = {c.lower() for c in current}
+        for phrase in vetoes:
+            if phrase.lower() not in have:
+                current.append(phrase)
+                have.add(phrase.lower())
+                added.append(phrase)
+        prefs["dealBreakers"] = current
+        prefs["dealBreakersConfirmed"] = True
+        prefs_path.write_text(json.dumps(prefs, indent=2, ensure_ascii=False) + "\n")
+        after = _do_match_prefs(triage, listings, prefs, resume_text, exclude,
+                                company, args.verbose, data_dir=args.data)
+
+    shown = after or before
+    families = cluster_matches(shown["jobs"], min_cluster=args.min_cluster)
+    leaks = explain_leaks(before["allScored"])
+    if getattr(args, "json", False):
+        _dump({
+            "before": {"matches": before["nMatches"], "listings": before["nListings"]},
+            "after": ({"matches": after["nMatches"], "listings": after["nListings"]}
+                      if after else None),
+            "vetoesAdded": added,
+            "families": families,
+            "leaks": leaks,
+            "warnings": shown["warnings"],
+        }, args.verbose)
+        return 0
+
+    print(f"{shown['nMatches']} matched across {len(families)} families "
+          f"(of {shown['nListings']} listings)")
+    print()
+    for fam in families:
+        locs = ", ".join(fam["locations"]) or "—"
+        samples = " · ".join(fam["sampleTitles"][:3])
+        print(f"  {fam['category']} / {fam['stem']} — {fam['count']}")
+        print(f"    median {fam['medianScore']} · {locs}")
+        if samples:
+            print(f"    e.g. {samples}")
+    print()
+    print(f"  not matched: {before['nListings'] - before['nMatches']}")
+    if leaks["vetoed"]:
+        print(f"    vetoed by dealBreakers: {leaks['vetoed']} "
+              f"across {len(leaks['vetoPhrases'])} phrases")
+        for phrase, count in list(leaks["vetoPhrases"].items())[:8]:
+            print(f'      "{phrase}" {count}')
+    if leaks["hardFailed"]:
+        print(f"    hard-failed: {leaks['hardFailed']}")
+        for reason, count in list(leaks["hardFailReasons"].items())[:8]:
+            print(f"      {reason} {count}")
+    if vetoes:
+        print()
+        if added:
+            print(f"  veto added: {', '.join(added)}")
+        else:
+            print("  veto phrases already present — no change")
+        print("  preferences.json updated (dealBreakersConfirmed=true)")
+        print(f"  matches.json rewritten: "
+              f"{before['nMatches']} → {after['nMatches']} matches")  # type: ignore[index]
+    for warning in shown["warnings"]:
+        print(f"  warning: {warning}")
     return 0
 
 
@@ -776,6 +889,20 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--data")
     m.add_argument("--company", default="")
     m.set_defaults(func=cmd_match_prefs)
+
+    v = sub.add_parser("review-matches", help="cluster a match-prefs shortlist into job families for empirical vetoing")
+    v.add_argument("--triage-dir", required=True)
+    v.add_argument("--listings")
+    v.add_argument("--prefs")
+    v.add_argument("--resume")
+    v.add_argument("--data")
+    v.add_argument("--company", default="")
+    v.add_argument("--min-cluster", type=int, default=2,
+                   help="families below this size fold into one bucket (default: 2)")
+    v.add_argument("--veto", action="append", default=[],
+                   help="add a deal-breaker phrase, rewrite prefs + matches (repeatable)")
+    v.add_argument("--json", action="store_true", help="machine-readable output instead of text")
+    v.set_defaults(func=cmd_review_matches)
 
     r = sub.add_parser("rank", help="rank corpus shards to search/ranked.json")
     r.add_argument("--data")

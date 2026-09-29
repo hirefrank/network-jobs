@@ -1,5 +1,30 @@
 # Changelog
 
+## v1.4.0 — 2026-09-29
+
+New commands plus extraction and precision fixes (issues #6–#10).
+
+### Extraction
+- Greenhouse `boards-api` object-`location` payloads now normalize instead of
+  passing through verbatim (type-aware staged guard in `normalize_listing`).
+- Prose placeholder ATS ids (`See Opening ID`, … — 20 entries) filter to
+  absent, so boards stop collapsing onto one shared fingerprint.
+
+### Matching & review
+- `match-prefs` prints composition (`matchDepartments`, `matchCategories`,
+  `reasonCounts`) and warns on unconfirmed empty `dealBreakers` (new
+  `dealBreakersConfirmed` flag, set by the interview).
+- New `review-matches`: family clustering, leak reports, `--veto` loop that
+  rewrites prefs and rematches in one step.
+- Interview confirms proposed categories (with affinity warning) and always
+  asks deal-breakers explicitly.
+- Hard-fail reasons now recorded (`category/location/track-mismatch`).
+
+### Reporting & packs
+- New `report`: sanitized diagnostic bundle (PII redacted) → GitHub issue,
+  plus an agent nudge to offer filing.
+- `build-pack` / `fetch-pack` wired into the `network-jobs` CLI.
+
 ## v1.3.2 — 2026-09-29
 
 - **Muse support in setup** — `network-jobs setup --agent auto` detects the

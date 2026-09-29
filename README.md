@@ -125,6 +125,7 @@ network-jobs import ~/Downloads/Connections.zip
 
 ```bash
 network-jobs setup | update | doctor | which | agents | routing
+network-jobs report [--title T] [--dry-run] [--yes]
 network-jobs import <zip-or-csv>
 network-jobs profile import <resume-file>
 network-jobs profile show
@@ -138,6 +139,9 @@ network-jobs search [--query "..."] [-k N] [--company-cap N] [--include-stale]
 network-jobs intros [--k-roles N] [--k-forwarders N]
 network-jobs companies [--sort connections|name|crawl]
 network-jobs refresh [--company NAME] [--limit N]
+network-jobs review-matches --triage-dir DIR [--veto PHRASE] [--json]
+network-jobs build-pack <zip-or-csv> [--label NAME]
+network-jobs fetch-pack <url> [--as NAME]
 network-jobs demo [-k N] [--company-cap N]   # synthetic jobs, no network/disk
 network-jobs embed-setup                     # one-time fastembed for semantic search
 ```

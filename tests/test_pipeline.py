@@ -48,6 +48,116 @@ class MatchPrefsTests(unittest.TestCase):
         self.assertIn("Product", result["departments"])
         self.assertEqual(result["showing"], f"{result['nMatches']} of 8 match prefs")
 
+    def test_shortlist_reports_composition_not_just_counts(self):
+        # #8: a bare "N of M" reads as success even when one unintended
+        # family dominates. Composition must be visible in the result.
+        result = match_listings(self.listings, self.prefs, company="Example")
+        for key in ("matchDepartments", "matchCategories", "reasonCounts",
+                    "warnings"):
+            self.assertIn(key, result)
+        self.assertEqual(sum(result["matchDepartments"].values()),
+                         result["nMatches"])
+        self.assertEqual(sum(result["matchCategories"].values()),
+                         result["nMatches"])
+        self.assertGreaterEqual(
+            sum(result["reasonCounts"].values()), result["nMatches"])
+        # Fixture prefs carry dealBreakers, so no unconfirmed-filter warning.
+        self.assertEqual(result["warnings"], [])
+
+    def test_unconfirmed_empty_dealbreakers_warns(self):
+        prefs = dict(self.prefs)
+        prefs["dealBreakers"] = []
+        result = match_listings(self.listings, prefs, company="Example")
+        self.assertTrue(any("dealBreakers" in w for w in result["warnings"]))
+        prefs["dealBreakersConfirmed"] = True
+        result = match_listings(self.listings, prefs, company="Example")
+        self.assertEqual(result["warnings"], [])
+
+    def test_mismatch_reasons_recorded_on_hard_fail(self):
+        prefs = dict(self.prefs)
+        prefs["categories"] = ["legal"]
+        result = match_listings(self.listings, prefs, company="Example")
+        reasons = [r for j in result["allScored"] for r in j["matchReasons"]]
+        self.assertIn("category-mismatch", reasons)
+
+
+class ReviewMatchesTests(unittest.TestCase):
+    def setUp(self):
+        self.prefs = _load("preferences.json")
+        self.listings = _load("listings-prefs.json")
+
+    def test_title_stem_strips_seniority(self):
+        from network_jobs.review import title_stem
+
+        self.assertEqual(title_stem("Senior Product Manager, Growth"),
+                         "product")
+        self.assertEqual(title_stem("Staff PM"), "product")
+        self.assertEqual(title_stem("Engineering Manager"), "engineering")
+
+    def test_cluster_groups_families(self):
+        from network_jobs.review import cluster_matches
+
+        jobs = [
+            {"title": "Senior Product Manager", "category": "product",
+             "location": "NYC", "matchScore": 12},
+            {"title": "Staff PM, Growth", "category": "product",
+             "location": "Remote", "matchScore": 10},
+            {"title": "Data Center Architect", "category": "operations",
+             "location": "Austin", "matchScore": 4},
+        ]
+        fams = cluster_matches(jobs, min_cluster=2)
+        by_stem = {f["stem"]: f for f in fams}
+        self.assertIn("product manager", by_stem)
+        self.assertEqual(by_stem["product manager"]["count"], 2)
+        self.assertEqual(by_stem["product manager"]["medianScore"], 11.0)
+        # Singleton folds into the mixed bucket at min_cluster=2.
+        mixed = [f for f in fams if f["stem"] == "(smaller families)"]
+        self.assertEqual(len(mixed), 1)
+        self.assertEqual(mixed[0]["count"], 1)
+
+    def test_explain_leaks_groups_vetoes_and_hard_fails(self):
+        from network_jobs.review import explain_leaks
+
+        scored = [
+            {"matched": True, "matchReasons": ["category"]},
+            {"matched": False, "veto": True,
+             "matchReasons": ["dealBreaker:data center"]},
+            {"matched": False, "veto": True,
+             "matchReasons": ["dealBreaker:data center"]},
+            {"matched": False, "veto": False,
+             "matchReasons": ["category-mismatch"]},
+        ]
+        leaks = explain_leaks(scored)
+        self.assertEqual(leaks["vetoed"], 2)
+        self.assertEqual(leaks["vetoPhrases"], {"data center": 2})
+        self.assertEqual(leaks["hardFailed"], 1)
+        self.assertEqual(leaks["hardFailReasons"], {"category-mismatch": 1})
+
+    def test_veto_rewrites_prefs_and_rematches(self):
+        tmp = Path(tempfile.mkdtemp(prefix="nj-rev-"))
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        triage = tmp / "triage" / "careers-example-2026-09-16"
+        (triage / "index").mkdir(parents=True)
+        shutil.copy(FIXTURES / "listings-prefs.json",
+                    triage / "index" / "listings.json")
+        data = tmp / "data"
+        data.mkdir()
+        shutil.copy(FIXTURES / "preferences.json", data / "preferences.json")
+        rc = helper_main([
+            "review-matches",
+            "--triage-dir", str(triage),
+            "--data", str(data),
+            "--company", "Example",
+            "--veto", "product manager",
+            "--json",
+        ])
+        self.assertEqual(rc, 0)
+        prefs = json.loads((data / "preferences.json").read_text())
+        self.assertIn("product manager", prefs["dealBreakers"])
+        self.assertTrue(prefs["dealBreakersConfirmed"])
+        matches = json.loads((triage / "index" / "matches.json").read_text())
+        self.assertEqual(matches["nMatches"], 0)
+
     def test_hybrid_nyc_or_remote_matches_remote_and_onsite_prefs(self):
         hybrid = next(j for j in self.listings if "or Remote" in j["location"])
         scored = score_job(hybrid, self.prefs, company="Example")
@@ -1083,6 +1193,32 @@ class SalaryParseTests(unittest.TestCase):
 
 
 class PaginationNormalizeTests(unittest.TestCase):
+    def test_greenhouse_object_location_normalized(self):
+        # Greenhouse boards-api sends location as {"name": ...}. The old
+        # truthiness-based staged fast path passed it through verbatim
+        # (missing url/externalId, dict location). It must normalize.
+        from network_jobs.pagination import normalize_listing
+
+        raw = {"id": 8172487, "title": "Abuse Investigator",
+               "location": {"name": "Dublin"},
+               "absolute_url": "https://x/?gh_jid=8172487"}
+        job = normalize_listing(raw, "https://src")
+        assert job is not None
+        self.assertEqual(job["url"], "https://x/?gh_jid=8172487")
+        self.assertEqual(job["externalId"], "8172487")
+        self.assertEqual(job["location"], "Dublin")
+        self.assertEqual(job["locations"], ["Dublin"])
+
+    def test_staged_string_listing_passes_through(self):
+        from network_jobs.pagination import normalize_listing
+
+        staged = {"title": "Eng", "url": "https://x/1", "location": "Remote"}
+        job = normalize_listing(staged, "https://src")
+        assert job is not None
+        self.assertEqual(job["url"], "https://x/1")
+        self.assertEqual(job["location"], "Remote")
+        self.assertEqual(job["sourceUrl"], "https://src")
+
     def test_string_salary_parsed(self):
         from network_jobs.pagination import normalize_listing
 
@@ -1179,6 +1315,30 @@ class FingerprintPlaceholderTests(unittest.TestCase):
              "atsId": "null"}
         self.assertNotEqual(fingerprint(a), fingerprint(b))
         self.assertTrue(fingerprint(a).startswith("fp:"))
+
+    def test_prose_placeholder_ids_ignored(self):
+        # Boards that render a label where an id belongs (Stripe leaves
+        # requisition_id as "See Opening ID" on every posting). These must
+        # not become a shared fingerprint that collapses the board.
+        from network_jobs.fingerprint import ats_id, fingerprint
+
+        for placeholder in ("See Opening ID", "see job id", "View Posting",
+                            "apply now", "Job Details"):
+            with self.subTest(placeholder=placeholder):
+                self.assertIsNone(ats_id({"requisition_id": placeholder,
+                                          "title": "x"}))
+
+    def test_shared_prose_placeholder_does_not_collapse_board(self):
+        from network_jobs.fingerprint import fingerprint
+
+        base = {"company": "Stripe", "location": "Dublin",
+                "externalId": "See Opening ID"}
+        fps = {
+            fingerprint(dict(base, title=t))
+            for t in ("Abuse Investigator", "Data Analyst", "Support Lead")
+        }
+        self.assertEqual(len(fps), 3)
+        self.assertTrue(all(fp.startswith("fp:") for fp in fps))
 
 
 class IntrosConstantTests(unittest.TestCase):

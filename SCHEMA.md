@@ -100,6 +100,7 @@ Search and discovery defaults from a **résumé-grounded** agent interview (not 
 | `salaryMin` | Annual USD floor, or `null` if undisclosed / no floor |
 | `mustHaves` | Short soft requirements |
 | `dealBreakers` | Short exclusions |
+| `dealBreakersConfirmed` | `true` once the interview explicitly asked for deal-breakers (even when the answer is none). An empty `dealBreakers` *without* this flag means "never asked" — `match-prefs` warns on it, because unasked filters silently widen the shortlist. |
 | `notes` | Catch-all soft constraints |
 | `interviewComplete` | `true` after the user finishes the preferences interview |
 
@@ -285,7 +286,7 @@ Verbatim capture of each fetch/browser snapshot **before** presenting results to
 
 Salary is `{ "min", "max" }` in annual USD with optional `"currency"` (default USD) and optional `"unit": "hourly"` — hourly rates are flagged, never annualized. String salaries (`"$150k–$180k"`, `"up to $200k"`, `"$75/hr"`) are parsed at ingest (`lib/network_jobs/salary.py`); dict salaries pass through. `postedAt` is canonicalized to `YYYY-MM-DD` at ingest when the ATS format parses, otherwise kept raw.
 
-Identity is **`fingerprint`**, not URL: `id:{company}:{atsId}` when `externalId` is known, otherwise `fp:{company}:{sha1(title+locations)}`. Placeholder ATS ids (`null`, `n/a`, `unknown`, `tbd`, `-`, …) are treated as absent so distinct jobs never collide on a shared placeholder. Rebuild merges on fingerprint: incoming wins, but `firstSeen` is preserved, `lastSeen` is inherited from the previous record when the incoming batch lacks it (a batch without `lastSeen` is not evidence the job was seen today), and a previous `postedAt` is kept when incoming lacks one. `status` is `open` | `closed`. Closed jobs stay in `jobs-all.json` but are omitted from searchable shards.
+Identity is **`fingerprint`**, not URL: `id:{company}:{atsId}` when `externalId` is known, otherwise `fp:{company}:{sha1(title+locations)}`. Placeholder ATS ids (`null`, `n/a`, `unknown`, `tbd`, `-`, plus prose label-leaks like `See Opening ID`) are treated as absent so distinct jobs never collide on a shared placeholder. The full set lives in `PLACEHOLDER_ATS_IDS` (`lib/network_jobs/fingerprint.py`). Rebuild merges on fingerprint: incoming wins, but `firstSeen` is preserved, `lastSeen` is inherited from the previous record when the incoming batch lacks it (a batch without `lastSeen` is not evidence the job was seen today), and a previous `postedAt` is kept when incoming lacks one. `status` is `open` | `closed`. Closed jobs stay in `jobs-all.json` but are omitted from searchable shards.
 
 **Expiry / close:** when ingesting a company, unseen open jobs for that company are marked `closed` **only if** triage `pagination.complete` is true. Incomplete crawls (truncated, cap hit, missing next page) must not expire anything.
 

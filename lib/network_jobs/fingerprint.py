@@ -23,6 +23,14 @@ SLUG_ID_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+){2,}$")
 PLACEHOLDER_ATS_IDS = frozenset({
     "null", "none", "undefined", "n/a", "na", "unknown", "tbd", "todo",
     "-", "--", "---", "?", "nil", "missing", "not set", "not applicable",
+    # Prose label-leak placeholders: boards that render a label where an id
+    # belongs (e.g. Stripe leaves requisition_id as "See Opening ID" on every
+    # posting). Matched case-insensitively after whitespace collapse.
+    "see opening id", "see job id", "see details", "see description",
+    "view job", "view jobs", "view posting", "view details",
+    "job details", "job description", "opening id", "job id",
+    "position id", "req id", "requisition id", "reference id", "ref id",
+    "apply now", "apply here", "click to apply", "learn more", "more info",
 })
 
 

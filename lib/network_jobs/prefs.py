@@ -148,6 +148,7 @@ def score_job(
     elif location_required:
         score -= 3
         hard_fail = True
+        reasons.append("location-mismatch")
 
     cats = [str(c).lower() for c in (prefs.get("categories") or [])]
     if cats:
@@ -163,6 +164,7 @@ def score_job(
         else:
             score -= 1
             hard_fail = True
+            reasons.append("category-mismatch")
 
     sen_prefs = [str(s).lower() for s in (prefs.get("seniority") or [])]
     signals = [str(s).lower() for s in (classified.get("senioritySignals") or [])]
@@ -209,6 +211,7 @@ def score_job(
         else:
             score -= 2
             hard_fail = True
+            reasons.append("track-mismatch")
 
     must = _keyword_hit(blob, prefs.get("mustHaves"))
     if must:
@@ -295,11 +298,30 @@ def match_listings(
     matches = [j for j in scored if j.get("matched")]
     matches.sort(key=lambda j: (-float(j.get("matchScore") or 0), str(j.get("title") or "")))
     depts = Counter(str(j.get("department") or "(none)") for j in listings)
+    # Composition of the shortlist itself (#8): a bare count reads as
+    # success even when 90% of matches are one unintended family.
+    match_depts = Counter(str(j.get("department") or "(none)") for j in matches)
+    match_cats = Counter(str(j.get("category") or "(none)") for j in matches)
+    reason_counts: Counter[str] = Counter()
+    for j in matches:
+        for reason in j.get("matchReasons") or []:
+            reason_counts[str(reason)] += 1
+    warnings: list[str] = []
+    if isinstance(prefs, dict):
+        if not prefs.get("dealBreakers") and not prefs.get("dealBreakersConfirmed"):
+            warnings.append(
+                "dealBreakers is empty and was never confirmed in the interview "
+                "(dealBreakersConfirmed!=true) — shortlist may be wider than intended"
+            )
     return {
         "nListings": len(listings),
         "nMatches": len(matches),
         "showing": f"{len(matches)} of {len(listings)} match prefs",
         "departments": dict(depts.most_common()),
+        "matchDepartments": dict(match_depts.most_common()),
+        "matchCategories": dict(match_cats.most_common()),
+        "reasonCounts": dict(reason_counts.most_common()),
+        "warnings": warnings,
         "jobs": matches,
         "allScored": scored,
     }

@@ -36,6 +36,9 @@ Commands:
   doctor
       Check tools, data dir, profile, skill links, corpus
 
+  report [--title T] [--body B] [--label L] [--dry-run] [--yes]
+      Assemble a sanitized diagnostic bundle and file a GitHub issue
+
   import <zip-or-csv> [--min-count N]
       Parse LinkedIn Connections into the local company graph
 
@@ -51,6 +54,15 @@ Commands:
 
   refresh [--company NAME] [--limit N] [--json]
       Re-crawl known listings endpoints (oldest first), stage new matches
+
+  review-matches --triage-dir DIR [--min-cluster N] [--veto PHRASE] [--json]
+      Cluster a match-prefs shortlist into job families; veto empirically
+
+  build-pack <zip-or-csv> [--label NAME] [--out PATH]
+      Build a publishable company-aggregated network pack (no names/emails)
+
+  fetch-pack <url> [--as NAME]
+      Download a published network pack into ~/.network-jobs/packs/
 
   demo [-k N] [--company-cap N]
       Rank a fixed synthetic job set (no network, no disk writes)
@@ -167,6 +179,33 @@ Options:
 EOF
 }
 
+usage_report() {
+  cat <<'EOF'
+Usage: network-jobs report [options]
+
+Assemble a sanitized diagnostic bundle (versions, doctor output, data
+counts, preferences/profile key names only, latest import summary, one
+triage INVENTORY) and file it as a GitHub issue. Values that identify
+you — profile fields, résumé text, connection rows — are never included;
+key names only. Review the exact body with --dry-run first.
+
+Options:
+  --title TEXT   Issue title (default: "network-jobs diagnostic bundle")
+  --body TEXT    Your description (or --stdin to read it)
+  --stdin        Read the description from stdin
+  --label NAME   Issue label (default: bug)
+  --repo SLUG    Target repo (default: hirefrank/network-jobs)
+  --triage-dir D Focus the bundle on one triage batch (default: most recent)
+  --dry-run      Print the exact issue body and file nothing
+  --yes, -y      Skip confirmation (non-interactive use)
+  --help, -h     Show this help
+
+Examples:
+  network-jobs report --title "Greenhouse listings came back without urls" --dry-run
+  echo "steps to reproduce…" | network-jobs report --title "…" --stdin --yes
+EOF
+}
+
 usage_import() {
   cat <<'EOF'
 Usage: network-jobs import <zip-or-csv> [--min-count N]
@@ -226,10 +265,69 @@ Examples:
 EOF
 }
 
+usage_build_pack() {
+  cat <<'EOF'
+Usage: network-jobs build-pack <zip-or-csv> [--label NAME] [--out PATH] [--min-count N]
+
+Build a publishable company-aggregated network pack from a LinkedIn export:
+company names, connection counts, title keywords — no names, emails, URLs,
+or dates. Share the file; others fetch it with fetch-pack.
+
+Options:
+  --label NAME   Pack owner label, e.g. 'Frank Harris'
+  --out PATH     Output JSON path (default: <label>-network-pack-<date>.json)
+  --min-count N  Drop companies with fewer connections (default: 1)
+  --help, -h     Show this help
+
+Examples:
+  network-jobs build-pack ~/Downloads/Connections.zip --label "Frank Harris"
+EOF
+}
+
+usage_fetch_pack() {
+  cat <<'EOF'
+Usage: network-jobs fetch-pack <url> [--as NAME]
+
+Download a published network pack into ~/.network-jobs/packs/. Validates
+the pack shape before saving. Packs are read-only overlays for search
+cross-referencing — they never merge into your connections or affect
+scoring. The suite's one sanctioned remote fetch.
+
+Options:
+  --as NAME    Pack name (default: slug of the pack label)
+  --help, -h   Show this help
+
+Examples:
+  network-jobs fetch-pack https://hirefrank.com/network-pack.json
+EOF
+}
+
+usage_review_matches() {
+  cat <<'EOF'
+Usage: network-jobs review-matches --triage-dir DIR [options]
+Cluster a match-prefs shortlist into job families (category + title stem)
+so deal-breakers are set empirically against observed counts — not guessed
+in advance. Also reports near-miss leaks grouped by the rule that caught
+them. Read-only unless --veto is given.
+
+Options:
+  --triage-dir DIR   Triage batch directory (required)
+  --min-cluster N    Families below N members fold into one bucket (default: 2)
+  --veto PHRASE      Add a deal-breaker phrase, rewrite preferences.json
+                     (marks dealBreakersConfirmed), re-run match-prefs and
+                     print before/after counts (repeatable)
+  --json             Machine-readable output instead of text
+  --help, -h         Show this help
+
+Examples:
+  network-jobs review-matches --triage-dir ~/.network-jobs/triage/careers-stripe-2026-09-29
+  network-jobs review-matches --triage-dir … --veto "data center" --veto architect
+EOF
+}
+
 usage_demo() {
   cat <<'EOF'
 Usage: network-jobs demo [-k N] [--company-cap N]
-
 Rank a fixed set of synthetic jobs (fake companies, no PII) against your
 preferences.json — or engineering/product defaults when none is set. No
 network, no disk writes: a quick end-to-end check of the scoring pipeline.
@@ -327,7 +425,6 @@ EOF
 usage_corpus() {
   cat <<'EOF'
 Usage: network-jobs corpus clear [--triage] [--yes]
-
 Empty the searchable job corpus under ~/.network-jobs/corpus/ while keeping
 profile, connections, companies, config, preferences, and résumé.
 
@@ -411,6 +508,7 @@ cmd_help() {
     setup) usage_setup ;;
     update) usage_update ;;
     doctor) usage_doctor ;;
+    report) usage_report ;;
     import) usage_import ;;
     search) usage_search ;;
     intros) usage_intros ;;
@@ -418,6 +516,9 @@ cmd_help() {
     embed-setup) usage_embed_setup ;;
     companies) usage_companies ;;
     refresh) usage_refresh ;;
+    review-matches) usage_review_matches ;;
+    build-pack) usage_build_pack ;;
+    fetch-pack) usage_fetch_pack ;;
     profile) usage_profile ;;
     corpus) usage_corpus ;;
     reset|uninstall) usage_reset ;;
@@ -775,6 +876,176 @@ cmd_doctor() {
   return 1
 }
 
+cmd_report() {
+  local title="" body="" label="bug" repo="hirefrank/network-jobs"
+  local triage_sel="" dry_run=0 yes=0 use_stdin=0
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --title) title="$2"; shift 2 ;;
+      --body) body="$2"; shift 2 ;;
+      --stdin) use_stdin=1; shift ;;
+      --label) label="$2"; shift 2 ;;
+      --repo) repo="$2"; shift 2 ;;
+      --triage-dir) triage_sel="$2"; shift 2 ;;
+      --dry-run) dry_run=1; shift ;;
+      -y|--yes) yes=1; shift ;;
+      -h|--help) usage_report; return 0 ;;
+      *)
+        echo "Unknown arg: $1" >&2
+        echo "Try: network-jobs report --help" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  if [[ "$use_stdin" -eq 1 ]]; then
+    body="$(cat)"
+  fi
+  [[ -n "$title" ]] || title="network-jobs diagnostic bundle"
+
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "error: report needs jq (doctor dependency)" >&2
+    return 1
+  fi
+
+  local tmp
+  tmp="$(mktemp)"
+  trap 'rm -f "$tmp"' RETURN
+
+  {
+    echo "## Environment"
+    echo
+    echo "- $(network_jobs_version)"
+    if [[ -d "$ROOT/.git" ]] && command -v git >/dev/null 2>&1; then
+      echo "- suite commit: $(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+    else
+      echo "- suite: ${ROOT/#$HOME/\~} (not a git checkout)"
+    fi
+    for tool in node python3 gh; do
+      if command -v "$tool" >/dev/null 2>&1; then
+        echo "- $tool: $("$tool" --version 2>/dev/null | head -n1 || echo present)"
+      else
+        echo "- $tool: MISSING"
+      fi
+    done
+    echo "- data: ${DATA_HOME/#$HOME/\~}"
+    if [[ "${NETWORK_JOBS_HOME:-}" != "" && "$DATA_HOME" != "$HOME/.network-jobs" ]]; then
+      echo "- NETWORK_JOBS_HOME overridden"
+    fi
+    echo
+    echo "## Doctor"
+    echo
+    echo '```'
+    # Sanitize: doctor prints the profile identity line and absolute home
+    # paths. Neither belongs in a public bundle.
+    cmd_doctor 2>&1 \
+      | sed -E "s|${HOME}|~|g; s/^(OK  profile \().*\)$/\1<name \/ email redacted>)/" || true
+    echo '```'
+    echo
+    echo "## Data snapshot (counts and key names only — no values)"
+    echo
+    local nconn="n/a" ncomp="n/a" tjobs="n/a"
+    [[ -f "$DATA_HOME/connections/connections.json" ]] \
+      && nconn="$(jq 'length' "$DATA_HOME/connections/connections.json" 2>/dev/null || echo n/a)"
+    [[ -f "$DATA_HOME/companies/companies.json" ]] \
+      && ncomp="$(jq 'length' "$DATA_HOME/companies/companies.json" 2>/dev/null || echo n/a)"
+    [[ -f "$DATA_HOME/corpus/manifest.json" ]] \
+      && tjobs="$(jq -r '.totalJobs // "n/a"' "$DATA_HOME/corpus/manifest.json" 2>/dev/null || echo n/a)"
+    echo "- connections: $nconn, companies: $ncomp, corpus totalJobs: $tjobs"
+    local batches=""
+    if [[ -d "$DATA_HOME/triage" ]]; then
+      batches="$(ls -1 "$DATA_HOME/triage" 2>/dev/null | grep '^careers-' | tr '\n' ' ' || true)"
+    fi
+    echo "- triage batches: ${batches:-none}"
+    if [[ -f "$DATA_HOME/preferences.json" ]]; then
+      echo "- preferences keys: $(jq -c 'keys' "$DATA_HOME/preferences.json" 2>/dev/null || echo n/a)"
+    else
+      echo "- preferences.json: missing"
+    fi
+    if [[ -f "$DATA_HOME/profile.json" ]]; then
+      echo "- profile keys: $(jq -c 'keys' "$DATA_HOME/profile.json" 2>/dev/null || echo n/a)"
+    else
+      echo "- profile.json: missing"
+    fi
+    if compgen -G "$DATA_HOME/resume/source.*" >/dev/null 2>&1; then
+      echo "- resume: present ($(ls "$DATA_HOME"/resume/source.* 2>/dev/null | wc -l) file(s), names withheld)"
+    else
+      echo "- resume: none"
+    fi
+    echo
+    echo "## Latest import summary"
+    echo
+    local latest_log=""
+    latest_log="$(ls -t "$DATA_HOME"/logs/import-*.json 2>/dev/null | head -n1 || true)"
+    if [[ -n "$latest_log" ]]; then
+      jq -r '"- \(.timestamp): \(.keptConnections) kept (\(.ignoredConnections) ignored), \(.companies) companies" | .,
+               "- top: " + ([.topCompanies[]? | "\(.name) (\(.count))"] | join(", "))' \
+        "$latest_log" 2>/dev/null || echo "- (unreadable log)"
+    else
+      echo "- no import logs yet"
+    fi
+    echo
+    echo "## Triage INVENTORY"
+    echo
+    local batch_dir=""
+    if [[ -n "$triage_sel" ]]; then
+      batch_dir="$triage_sel"
+    else
+      batch_dir="$(ls -dt "$DATA_HOME"/triage/careers-* 2>/dev/null | head -n1 || true)"
+    fi
+    if [[ -n "$batch_dir" && -f "$batch_dir/INVENTORY.md" ]]; then
+      echo "Batch: \`$(basename "$batch_dir")\`"
+      echo
+      head -n 120 "$batch_dir/INVENTORY.md"
+    else
+      echo "- no triage INVENTORY found"
+    fi
+    echo
+    echo "## User report"
+    echo
+    if [[ -n "$body" ]]; then
+      echo "$body"
+    else
+      echo "(no description provided)"
+    fi
+  } > "$tmp"
+
+  if [[ "$dry_run" -eq 1 ]]; then
+    cat "$tmp"
+    return 0
+  fi
+
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "error: gh is not installed — file manually with: network-jobs report --dry-run" >&2
+    return 1
+  fi
+
+  if [[ "$yes" -ne 1 ]]; then
+    echo "Issue title: $title"
+    echo "Bundle: $(wc -l < "$tmp") lines (preview everything with --dry-run)"
+    echo "Target: $repo (label: $label)"
+    echo
+    if [[ ! -t 0 ]]; then
+      echo "error: non-interactive shell — pass --yes to confirm" >&2
+      return 1
+    fi
+    printf "File this issue? [y/N] "
+    local answer
+    read -r answer
+    case "$answer" in
+      y|Y|yes|YES) ;;
+      *) echo "Aborted."; return 1 ;;
+    esac
+  fi
+
+  if [[ -n "$label" ]]; then
+    gh issue create --repo "$repo" --title "$title" --body-file "$tmp" --label "$label"
+  else
+    gh issue create --repo "$repo" --title "$title" --body-file "$tmp"
+  fi
+}
+
 cmd_import() {
   if network_jobs_want_help "$@"; then
     usage_import
@@ -1115,6 +1386,42 @@ cmd_demo() {
   _lib_cli demo "$@"
 }
 
+cmd_review_matches() {
+  if network_jobs_want_help "$@"; then
+    usage_review_matches
+    return 0
+  fi
+  if [[ $# -eq 0 ]]; then
+    usage_review_matches >&2
+    return 1
+  fi
+  _lib_cli review-matches "$@"
+}
+
+cmd_build_pack() {
+  if network_jobs_want_help "$@"; then
+    usage_build_pack
+    return 0
+  fi
+  if [[ $# -eq 0 ]]; then
+    usage_build_pack >&2
+    return 1
+  fi
+  _lib_cli build-pack "$@"
+}
+
+cmd_fetch_pack() {
+  if network_jobs_want_help "$@"; then
+    usage_fetch_pack
+    return 0
+  fi
+  if [[ $# -eq 0 ]]; then
+    usage_fetch_pack >&2
+    return 1
+  fi
+  _lib_cli fetch-pack "$@"
+}
+
 cmd_embed_setup() {
   if network_jobs_want_help "$@"; then
     usage_embed_setup
@@ -1152,6 +1459,7 @@ case "$cmd" in
     ;;
   update) cmd_update "$@" ;;
   doctor) cmd_doctor "$@" ;;
+  report) cmd_report "$@" ;;
   import) cmd_import "$@" ;;
   search) cmd_search "$@" ;;
   intros) cmd_intros "$@" ;;
@@ -1159,6 +1467,9 @@ case "$cmd" in
   embed-setup) cmd_embed_setup "$@" ;;
   companies) cmd_companies "$@" ;;
   refresh) cmd_refresh "$@" ;;
+  review-matches) cmd_review_matches "$@" ;;
+  build-pack) cmd_build_pack "$@" ;;
+  fetch-pack) cmd_fetch_pack "$@" ;;
   profile) cmd_profile "$@" ;;
   corpus) cmd_corpus "$@" ;;
   reset) cmd_reset "$@" ;;

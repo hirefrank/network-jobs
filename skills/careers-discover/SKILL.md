@@ -108,7 +108,20 @@ python3 "$SUITE/skills/careers-discover/helpers/match-prefs.py" \
   --triage-dir "$TRIAGE" --company "$NAME"
 ```
 
-This writes `index/matches.json` and patches INVENTORY with **N of M match prefs** plus a department histogram. Quiet JSON on stdout (`-v` for departments).
+This writes `index/matches.json` and patches INVENTORY with **N of M match prefs** plus a department histogram. Quiet JSON on stdout includes composition (`matchDepartments`, `matchCategories`, `reasonCounts`, `warnings`).
+
+To review the shortlist as job families instead of a flat list (so deal-breakers
+are set against observed counts), run:
+
+```bash
+python3 "$SUITE/skills/careers-discover/helpers/review-matches.py" \
+  --triage-dir "$TRIAGE" --company "$NAME"
+```
+
+This clusters matches by category + title stem, reports near-miss leaks grouped
+by rule, and — with `--veto "phrase"` (repeatable) — appends to
+`preferences.json` deal-breakers, re-runs match-prefs, and prints
+before/after counts.
 
 8. **INVENTORY.md must include**
    - Company name + slug
@@ -122,6 +135,8 @@ This writes `index/matches.json` and patches INVENTORY with **N of M match prefs
 
 9. **Hand off (hard stop)**
    - Point at each triage dir. Quote the helper’s `showing` line (e.g. `14 of 120 match prefs`) — do not paste the full listings array.
+   - Offer `review-matches` to walk families before ingest (“18 matched across 4 families — want to veto any?”).
+   - If the run surfaced something that looks like a **suite defect** rather than a site quirk (malformed listings, dedup collapse, zero-yield pagination on a board that should list), say so and offer to file it: `network-jobs report --dry-run` first, show the bundle, and only file after explicit confirmation.
    - Ask whether to run `jobs-ingest` on **matches** (default), **all** listings, or a department slice.
    - **STOP.** Do **not** invoke `jobs-ingest`, rebuild the corpus, or resume a job search in the same turn.
    - Only after the user explicitly confirms (e.g. “ingest these”, “ingest matches”, “ingest all”, “promote the Google batch”) should you load **jobs-ingest**.
@@ -171,6 +186,7 @@ Never start with agent-browser for a simple static page. Never keep retrying bro
 - [`helpers/paginate-listings.py`](helpers/paginate-listings.py) — page/cursor/offset into `listings.json` + `pagination.json`
 - [`helpers/crawl-state.py`](helpers/crawl-state.py) — listing-set hash vs lastCrawl; `--stamp` after a successful extract
 - [`helpers/match-prefs.py`](helpers/match-prefs.py) — score listings vs `preferences.json` → `index/matches.json`
+- [`helpers/review-matches.py`](helpers/review-matches.py) — cluster shortlist into families, explain leaks, apply vetoes
 
 ## Related
 
