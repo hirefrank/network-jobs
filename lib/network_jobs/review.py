@@ -36,20 +36,25 @@ _WS_RE = re.compile(r"[^a-z0-9]+")
 
 
 def title_stem(title: str) -> str:
-    """Reduce a title to its family headword: first significant token.
+    """Reduce a title to a `head/domain` family stem (#13).
 
-    Deliberately coarse — seniority variants and team suffixes ("Growth",
-    "Foundations") share one stem so a family reads as one vetoable unit.
-    Finer grouping (data-center buildout vs support) is taxonomy work,
-    deferred until clustering proves inadequate.
+    The head alone ("product") collapses whole boards into one family, so
+    retain the first qualifier as the domain: "Staff PM, Payments" and
+    "Senior Product Manager" become different families
+    (`product/payments` vs `product`), while seniority/shape variants of
+    the same team still merge. Single-qualifier titles keep a bare head.
+    Coarser than a taxonomy on purpose — vetoes stay explicit phrases.
     """
     words = [
-        w for w in _WS_RE.sub(" ", str(title or "").lower()).split()
+        ABBREV.get(w, w)
+        for w in _WS_RE.sub(" ", str(title or "").lower()).split()
         if w not in SENIORITY_WORDS and len(w) > 1
     ]
     if not words:
         return str(title or "").lower().strip()
-    return ABBREV.get(words[0], words[0])
+    head = words[0]
+    domain = next((w for w in words[1:] if w != head), "")
+    return f"{head}/{domain}" if domain else head
 
 
 def _family_of(job: dict[str, Any]) -> tuple[str, str]:
@@ -88,9 +93,12 @@ def cluster_matches(
             t = str(m.get("title") or "").strip()
             if t and t not in titles:
                 titles.append(t)
+        head, _, domain = stem.partition("/")
         fams.append({
             "category": category,
             "stem": stem,
+            "label": stem if head == category else f"{category} / {stem}",
+            "suggestedVeto": domain or head,
             "count": len(members),
             "medianScore": round(median(scores), 2) if scores else 0,
             "locations": locs[:4],

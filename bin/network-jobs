@@ -45,9 +45,10 @@ Commands:
   search [--query "..."] [-k N] [--company-cap N] [--include-stale] [--json]
       Rank the corpus against your prefs and print matching jobs
 
-  intros [--k-roles N] [--k-forwarders N]
+  intros [--k-roles N] [--k-forwarders N] [--title T] [--url U] [--company C]
       Pick 1-2 roles from the last search + 1-2 forwarders each
-      from your connections (writes search/intros.json)
+      from your connections (writes search/intros.json).
+      Flags target reviewed roles instead of the search tail.
 
   companies [--sort connections|name|crawl] [--json]
       List the company graph: connections, last crawl, listing-set hash
@@ -226,7 +227,7 @@ EOF
 
 usage_search() {
   cat <<'EOF'
-Usage: network-jobs search [--query "..."] [-k N] [--include-stale] [--json]
+Usage: network-jobs search [--query "..."] [-k N] [--include-stale] [--json] [-v]
 
 Rank the corpus against preferences.json (+ résumé keywords) and print the
 top matches. Also writes ~/.network-jobs/search/ranked.json for follow-on
@@ -238,6 +239,8 @@ Options:
   --company-cap N Max jobs per company in the shortlist (default: 3, 0 = no cap)
   --include-stale Also show stale postings (posted >90d ago, hidden by default)
   --json          Print the ranked.json payload instead of a human list
+  -v, --verbose   Append a fit brief per role (reasons, résumé hits,
+                  connection warmth, gaps). Default output is unchanged.
   --help, -h      Show this help
 
 Examples:
@@ -248,7 +251,7 @@ EOF
 
 usage_intros() {
   cat <<'EOF'
-Usage: network-jobs intros [--k-roles N] [--k-forwarders N]
+Usage: network-jobs intros [--k-roles N] [--k-forwarders N] [--title T] [--url U] [--company C]
 
 Pick up to N roles from the last `network-jobs search` (search/ranked.json)
 and up to N forwarders per role from your connections. Writes
@@ -257,10 +260,17 @@ and up to N forwarders per role from your connections. Writes
 Options:
   --k-roles N       Max roles to keep (default: 2)
   --k-forwarders N  Max forwarders per role (default: 2)
+  --title TEXT      Only roles whose title contains this text
+  --url TEXT        Only roles whose url contains this text
+  --company NAME    Only roles at this company (normalized match)
   --help, -h        Show this help
+
+With --title/--url/--company, intros targets reviewed roles instead of the
+top of the last search. No match is an error.
 
 Examples:
   network-jobs intros
+  network-jobs intros --title "Staff PM" --company Stripe
   network-jobs intros --k-roles 1 --k-forwarders 3
 EOF
 }

@@ -1,5 +1,31 @@
 # Changelog
 
+## v1.5.0 — 2026-09-29
+
+Location correctness, review precision, ingest safety, and fit evidence
+(issues #11–#16).
+
+### Locations
+- Unknown-location sentinels (`N/A`, …) never match onsite prefs; short
+  tokens match only on word boundaries (`DC` still hits `Washington, DC`;
+  `N` can no longer ride inside `New York`).
+- `parse_locations` is idempotent and splits comma-separated multi-city
+  strings (`San Francisco, Seattle, …` → one entry per city); `City, ST`
+  pairs stay whole. `anywhere`/`global`/`worldwide` parse as remote.
+
+### Review & intros
+- `review-matches` clusters by `head/domain` family stems
+  (`product/payments`), each with a suggested `--veto` phrase.
+- `intros --title/--url/--company` targets reviewed roles; empty selection
+  is an error, not a silent default.
+- `search -v` appends a fit brief per role (reasons, résumé hits, warmth,
+  gaps); default output unchanged.
+
+### Safety
+- Expiry refuses filtered batches: `--expect-count` (board size) makes
+  matches-only ingest skip closing live roles, loudly; `--force-expire`
+  overrides. The skill always passes the board size now.
+
 ## v1.4.0 — 2026-09-29
 
 New commands plus extraction and precision fixes (issues #6–#10).

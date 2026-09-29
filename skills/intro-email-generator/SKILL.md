@@ -135,7 +135,10 @@ For more examples, see [examples.md](examples.md).
 ## Integration with network-jobs
 
 If the user found a job using the network-jobs skill:
-- Run `network-jobs intros` (joins `search/ranked.json` + `connections/connections.json`)
+- Prefer explicitly reviewed roles: `network-jobs intros --title "..."` /
+  `--url ...` / `--company ...` (joins `search/ranked.json` + `connections/connections.json`).
+  Bare `network-jobs intros` takes the tail of the last search — fine as a
+  default, but ask first when the user has reviewed specific roles.
 - Confirm 1–2 roles and 1–2 forwarders with the user
 - Fetch JD **only** for `fetchJdUrls` (or skip and use `department`)
 - Job seeker name/email may be in ~/.network-jobs/profile.json

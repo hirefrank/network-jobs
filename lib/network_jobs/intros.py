@@ -43,14 +43,41 @@ def _score_forwarder(job: dict[str, Any], person: dict[str, Any]) -> float:
 
 
 def connections_at_company(connections: list[dict[str, Any]], company: str) -> list[dict[str, Any]]:
-    want = normalize_company(company)
-    if not want:
-        return []
-    hits = []
-    for row in connections:
-        if normalize_company(str(row.get("company") or "")) == want:
-            hits.append(row)
-    return hits
+  want = normalize_company(company)
+  if not want:
+      return []
+  hits = []
+  for row in connections:
+      if normalize_company(str(row.get("company") or "")) == want:
+          hits.append(row)
+  return hits
+
+
+def filter_jobs(
+    jobs: list[dict[str, Any]],
+    *,
+    title: str = "",
+    url: str = "",
+    company: str = "",
+) -> list[dict[str, Any]]:
+    """Narrow ranked jobs to explicitly reviewed roles (#14).
+
+    All matches are case-insensitive substrings, except company which
+    compares normalized names (so "Stripe" matches "Stripe, Inc.").
+    Empty filters select everything (back-compat default).
+    """
+    out = []
+    for job in jobs:
+        if title and title.lower() not in str(job.get("title") or "").lower():
+            continue
+        if url and url not in str(job.get("url") or ""):
+            continue
+        if company:
+            want = normalize_company(company)
+            if not want or normalize_company(str(job.get("company") or "")) != want:
+                continue
+        out.append(job)
+    return out
 
 
 def rank_intros(

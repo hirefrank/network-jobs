@@ -85,7 +85,18 @@ def merge_jobs(
     *,
     expire_company: str | None = None,
     pagination_complete: bool = False,
-) -> list[dict[str, Any]]:
+    expected_total: int | None = None,
+    force_expire: bool = False,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Merge incoming into existing by fingerprint.
+
+    Expiry closes unseen jobs for expire_company only when the batch can
+    plausibly be the whole board: pagination must be complete AND (when
+    expected_total is known) the incoming fingerprint set must cover it.
+    A matches-only batch over a bigger board skips expiry loudly instead of
+    silently closing live roles (#16) — pass force_expire only when you know
+    the batch is the full board despite a smaller count.
+    """
     by_fp: dict[str, dict[str, Any]] = {}
     for job in existing:
         fp = job_fingerprint(job)
@@ -118,26 +129,36 @@ def merge_jobs(
             merged.pop("closedAt", None)
         by_fp[fp] = merged
 
+    info: dict[str, Any] = {"expired": 0, "expirySkipped": False, "expiryReason": ""}
     if expire_company and pagination_complete:
-        target = normalize_company(expire_company) or slugify(expire_company)
-        for fp, job in list(by_fp.items()):
-            if fp in seen:
-                continue
-            key = _company_key(job)
-            slug = slugify(key)
-            if key != target and slug != slugify(target) and slug != target:
-                continue
-            if str(job.get("status") or "open") == "closed":
-                continue
-            closed = dict(job)
-            closed["status"] = "closed"
-            closed["closedAt"] = today
-            by_fp[fp] = closed
+        if (expected_total is not None and not force_expire
+                and len(seen) < expected_total):
+            info["expirySkipped"] = True
+            info["expiryReason"] = (
+                f"incoming {len(seen)} fingerprints < expected board "
+                f"{expected_total}: treating batch as filtered; expiry skipped "
+                "(pass force_expire to override)")
+        else:
+            target = normalize_company(expire_company) or slugify(expire_company)
+            for fp, job in list(by_fp.items()):
+                if fp in seen:
+                    continue
+                key = _company_key(job)
+                slug = slugify(key)
+                if key != target and slug != slugify(target) and slug != target:
+                    continue
+                if str(job.get("status") or "open") == "closed":
+                    continue
+                closed = dict(job)
+                closed["status"] = "closed"
+                closed["closedAt"] = today
+                by_fp[fp] = closed
+                info["expired"] += 1
     elif expire_company and not pagination_complete:
         # Explicit no-op: incomplete crawls must not close unseen roles.
         pass
 
-    return list(by_fp.values())
+    return list(by_fp.values()), info
 
 
 def write_shards(corpus: Path, jobs: list[dict[str, Any]]) -> dict[str, Any]:
@@ -215,18 +236,25 @@ def rebuild(
     *,
     expire_company: str | None = None,
     pagination_complete: bool = False,
+    expected_total: int | None = None,
+    force_expire: bool = False,
 ) -> dict[str, Any]:
     incoming = load_jobs(incoming_path)
     existing = load_existing_jobs(corpus)
-    jobs = merge_jobs(
+    jobs, merge_info = merge_jobs(
         existing,
         incoming,
         expire_company=expire_company,
         pagination_complete=pagination_complete,
+        expected_total=expected_total,
+        force_expire=force_expire,
     )
     summary = write_shards(corpus, jobs)
     summary["incoming"] = len(incoming)
-    summary["expired"] = bool(expire_company) and pagination_complete
+    summary["expired"] = bool(expire_company) and pagination_complete and not merge_info["expirySkipped"]
+    summary["expiredCount"] = merge_info["expired"]
+    summary["expirySkipped"] = merge_info["expirySkipped"]
+    summary["expiryReason"] = merge_info["expiryReason"]
     summary["expireCompany"] = expire_company or ""
     summary["paginationComplete"] = pagination_complete
     # Semantic cache: embed only new/changed jobs; no-op when no provider.

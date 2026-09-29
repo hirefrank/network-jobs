@@ -176,7 +176,7 @@ Two uses:
 
 ## Output Format
 
-**STRICT FORMAT REQUIRED** — Do NOT summarize or paraphrase. Do NOT write prose/narrative.
+**STRICT FORMAT REQUIRED for default `search` output** — Do NOT summarize or paraphrase. Do NOT write prose/narrative.
 
 1. Header: `Searching via [Name] ([Title])...` or with `@ [Company]` if set
 2. Data freshness: `Data as of [Mon D], [H:MM AM/PM] ([relative] ago)` from `manifest.lastUpdated`
@@ -185,6 +185,13 @@ Two uses:
 5. Each job: `• [Title] – [Salary if available], [N]d [↗](url)`
 6. Days from `postedAt` else `firstSeen` (`3d`, `14d`, …)
 7. Footer: `Want help drafting an intro email?` — if profile has email, include it; also offer connection names from `companies.json` when known
+
+The strict contract covers default output only. When the user asks *why* a role
+fits (or you need fit evidence before drafting intros), re-run with
+`network-jobs search -v`: it appends a fit brief per role (recorded
+`matchReasons`, résumé keyword hits, mustHaves hits, connection warmth with
+best forwarder, gap flags). Narrate from that evidence — do not invent fit
+the brief doesn't support.
 
 **Example:**
 

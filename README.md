@@ -135,8 +135,8 @@ network-jobs reset [--data] [--purge-cache] [--yes]
 network-jobs uninstall [--yes]    # alias for reset --data
 
 # Day-to-day (also available in your agent):
-network-jobs search [--query "..."] [-k N] [--company-cap N] [--include-stale]
-network-jobs intros [--k-roles N] [--k-forwarders N]
+network-jobs search [--query "..."] [-k N] [--company-cap N] [--include-stale] [-v]
+network-jobs intros [--k-roles N] [--k-forwarders N] [--title T] [--url U] [--company C]
 network-jobs companies [--sort connections|name|crawl]
 network-jobs refresh [--company NAME] [--limit N]
 network-jobs review-matches --triage-dir DIR [--veto PHRASE] [--json]

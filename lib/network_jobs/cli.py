@@ -218,10 +218,12 @@ def cmd_review_matches(args: argparse.Namespace) -> int:
     for fam in families:
         locs = ", ".join(fam["locations"]) or "—"
         samples = " · ".join(fam["sampleTitles"][:3])
-        print(f"  {fam['category']} / {fam['stem']} — {fam['count']}")
+        print(f"  {fam['label']} — {fam['count']}")
         print(f"    median {fam['medianScore']} · {locs}")
         if samples:
             print(f"    e.g. {samples}")
+        if fam["stem"] != "(smaller families)":
+            print(f"    veto with: --veto \"{fam['suggestedVeto']}\"")
     print()
     print(f"  not matched: {before['nListings'] - before['nMatches']}")
     if leaks["vetoed"]:
@@ -343,7 +345,77 @@ def cmd_search(args: argparse.Namespace) -> int:
         url = job.get("url") or job.get("jdUrl") or ""
         if url:
             print(f"  {url}")
+    if getattr(args, "verbose", False):
+        _print_fit_brief(data_home(args.data), result["jobs"])
     return 0
+
+
+def _print_fit_brief(data: Path, jobs: list[dict[str, Any]]) -> None:
+    """Verbose-only fit evidence per role (#14): reasons, résumé mapping,
+    connection warmth, gaps. Default output stays terse; the agent narrates
+    from this evidence instead of the skill paraphrasing blind."""
+    from .intros import _score_forwarder, connections_at_company
+    from .prefs import _keyword_hit, load_resume_keywords, name_tokens
+    from .text import tokenize
+
+    profile = _load_json(data / "profile.json", {})
+    if not isinstance(profile, dict):
+        profile = {}
+    prefs = _load_json(data / "preferences.json", {})
+    if not isinstance(prefs, dict):
+        prefs = {}
+    resume_text = ""
+    resume_path = data / "resume" / "text.md"
+    if resume_path.is_file():
+        resume_text = resume_path.read_text()
+    keywords = (load_resume_keywords(resume_text, exclude=name_tokens(profile))
+                if resume_text else [])
+    must_haves = prefs.get("mustHaves") or []
+    connections = _load_json(data / "connections" / "connections.json", [])
+    if not isinstance(connections, list):
+        connections = []
+    print()
+    print("Fit brief (verbose only — default output above is unchanged):")
+    for job in jobs:
+        title = str(job.get("title") or "untitled")
+        company = str(job.get("company") or "")
+        print(f"  {title} @ {company}")
+        reasons = [str(r) for r in job.get("matchReasons") or []]
+        print(f"    fit {job.get('matchScore')} · "
+              + (", ".join(reasons) if reasons else "no recorded reasons"))
+        if keywords:
+            blob = f"{title} {job.get('department') or ''} {company}".lower()
+            tokens = set(tokenize(blob))
+            hits = sorted({k for k in keywords
+                           if k.lower() in tokens or k.lower() in blob})[:6]
+            mh = _keyword_hit(blob, must_haves) if must_haves else []
+            print(f"    résumé hits: {', '.join(hits) if hits else 'none'} | "
+                  f"mustHaves: {', '.join(mh) if mh else 'none matched'}")
+        people = connections_at_company(connections, company)
+        if people:
+            best = max(
+                (p for p in people if str(p.get("name") or p.get("firstName") or "").strip()),
+                key=lambda p: (_score_forwarder(job, p), str(p.get("name") or "")),
+                default=None,
+            )
+            if best is not None:
+                name = str(best.get("name") or
+                           f"{best.get('firstName') or ''} {best.get('lastName') or ''}".strip())
+                pos = str(best.get("position") or "position unknown")
+                print(f"    warmth: {len(people)} at {company} · "
+                      f"best: {name} ({pos})")
+            else:
+                print(f"    warmth: {len(people)} at {company} (no named contacts)")
+        else:
+            print(f"    warmth: no connections at {company or 'unknown company'}")
+        gaps = []
+        signals = [str(s).lower() for s in (job.get("senioritySignals") or [])]
+        if "intern" in signals or "junior" in signals:
+            gaps.append("junior-adjacent")
+        if job.get("stale"):
+            gaps.append("stale")
+        if gaps:
+            print(f"    gaps: {', '.join(gaps)}")
 
 
 #: Fixed synthetic jobs for the `demo` command. Obviously fake companies —
@@ -616,12 +688,17 @@ def cmd_rebuild(args: argparse.Namespace) -> int:
         data / "corpus",
         expire_company=args.expire_company or None,
         pagination_complete=complete,
+        expected_total=args.expect_count,
+        force_expire=args.force_expire,
     )
     _dump(summary if args.verbose else {
         "totalJobs": summary["totalJobs"],
         "incoming": summary["incoming"],
         "closedJobs": summary.get("closedJobs", 0),
         "expired": summary.get("expired", False),
+        "expiredCount": summary.get("expiredCount", 0),
+        "expirySkipped": summary.get("expirySkipped", False),
+        "expiryReason": summary.get("expiryReason", ""),
         "paginationComplete": summary.get("paginationComplete", False),
     }, args.verbose)
     return 0
@@ -734,7 +811,7 @@ def cmd_crawl_state(args: argparse.Namespace) -> int:
 
 
 def cmd_rank_intros(args: argparse.Namespace) -> int:
-    from .intros import rank_intros
+    from .intros import filter_jobs, rank_intros
     from .paths import data_home as dh
 
     data = dh(args.data)
@@ -746,6 +823,15 @@ def cmd_rank_intros(args: argparse.Namespace) -> int:
         jobs = payload
     else:
         jobs = []
+    title = getattr(args, "title", "") or ""
+    url = getattr(args, "url", "") or ""
+    company = getattr(args, "company", "") or ""
+    if title or url or company:
+        jobs = filter_jobs(jobs, title=title, url=url, company=company)
+        if not jobs:
+            print("no ranked jobs match the given --title/--url/--company filters",
+                  file=sys.stderr)
+            return 1
     connections = _load_json(
         Path(args.connections) if args.connections else data / "connections" / "connections.json",
         [],
@@ -763,6 +849,15 @@ def cmd_rank_intros(args: argparse.Namespace) -> int:
         "out": str(dest),
         "showing": result["showing"],
     }
+    applied = {}
+    if title:
+        applied["title"] = title
+    if url:
+        applied["url"] = url
+    if company:
+        applied["company"] = company
+    if applied:
+        quiet["filters"] = applied
     _dump(quiet, args.verbose)
     return 0
 
@@ -965,6 +1060,10 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--expire-company", default="")
     b.add_argument("--pagination-complete", action="store_true")
     b.add_argument("--pagination-incomplete", action="store_true")
+    b.add_argument("--expect-count", type=int, default=None,
+                   help="board listing count: skip expiry when the batch is a strict subset (filtered ingest)")
+    b.add_argument("--force-expire", action="store_true",
+                   help="expire even on a subset batch (operator override)")
     b.set_defaults(func=cmd_rebuild)
 
     c = sub.add_parser("classify", help="title/department → category, track, seniority")
@@ -992,6 +1091,12 @@ def build_parser() -> argparse.ArgumentParser:
     ri.add_argument("--out")
     ri.add_argument("--k-roles", type=int, default=2)
     ri.add_argument("--k-forwarders", type=int, default=2)
+    ri.add_argument("--title", default="",
+                    help="only roles whose title contains this text")
+    ri.add_argument("--url", default="",
+                    help="only roles whose url contains this text")
+    ri.add_argument("--company", default="",
+                    help="only roles at this company (normalized match)")
     ri.set_defaults(func=cmd_rank_intros)
 
     es = sub.add_parser("embed-setup", help="install fastembed + warm the embedding model (one time)")

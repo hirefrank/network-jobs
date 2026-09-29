@@ -19,7 +19,11 @@ UNKNOWN_LOCATION_SENTINELS = {
     "", "-", "--", "?", "n/a", "n.a.", "na", "none", "null", "nil",
     "tbd", "tba", "tbc", "unknown", "unspecified", "not specified",
     "not available", "no location", "location tbd", "multiple locations",
-    "various", "anywhere", "global", "worldwide",
+    "various",
+    # NOTE: "anywhere" / "global" / "worldwide" are deliberately NOT here.
+    # They mean location-independent, which parses as remote downstream —
+    # sending them to unknown would hide remote-eligible roles from remote
+    # seekers (bucket "other" instead of "remote").
 }
 
 NYC_CITY = {
@@ -80,6 +84,24 @@ REMOTE_MARKERS = (
 )
 SPLIT_RE = re.compile(r"\s*(?:/|;|\||\bor\b|\band\b|\+|•)\s*", re.I)
 
+# Full US state names (lowercase) for comma-list reattachment: "Portland,
+# Oregon" is one place, "Chicago, Atlanta" is two. Two-letter codes match
+# structurally; anything else multi-word is split only past 2 comma tokens.
+# Single-word US state names (lowercase) for comma-list reattachment:
+# "Portland, Oregon" is one place, "Chicago, Atlanta" is two. Multi-word
+# states are deliberately excluded — "New York" as a following token is far
+# more likely a city ("Seattle, New York") than a state, and two-letter
+# codes ("New York, NY") never reach this branch (kept whole above).
+US_STATES = frozenset({
+    "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
+    "connecticut", "delaware", "florida", "georgia", "hawaii", "idaho",
+    "illinois", "indiana", "iowa", "kansas", "kentucky", "louisiana",
+    "maine", "maryland", "massachusetts", "michigan", "minnesota",
+    "mississippi", "missouri", "montana", "nebraska", "nevada",
+    "ohio", "oklahoma", "oregon", "pennsylvania", "tennessee", "texas",
+    "utah", "vermont", "virginia", "washington", "wisconsin", "wyoming",
+})
+
 
 def _norm_place(value: str) -> str:
     s = collapse_ws(value).lower()
@@ -121,8 +143,36 @@ def _split_raw(raw: str) -> list[str]:
     if _norm_place(raw) in UNKNOWN_LOCATION_SENTINELS:
         return []
     parts = [p for p in SPLIT_RE.split(raw) if p and p.lower() not in {"and", "or"}]
-    parts = [p for p in parts if _norm_place(p) not in UNKNOWN_LOCATION_SENTINELS]
-    return parts or ([raw] if _norm_place(raw) not in UNKNOWN_LOCATION_SENTINELS else [])
+    out: list[str] = []
+    for part in parts:
+        # Comma-separated multi-city strings (Stripe style). Exactly two
+        # comma tokens stay whole — "City, ST" / "City, State" / "City,
+        # Country" is one place and parse_one already splits City, Region.
+        # Three or more tokens means a city list: split, reattaching only
+        # bare region codes and US state names ("Portland, Oregon" stays
+        # whole; "Chicago, Atlanta" separates; "Remote" never attaches).
+        toks = [t.strip() for t in part.split(",") if t.strip()]
+        if len(toks) <= 2:
+            if not toks:
+                continue
+            if len(toks) == 2 and _norm_place(toks[1]) in UNKNOWN_LOCATION_SENTINELS:
+                out.append(toks[0])
+            else:
+                out.append(toks[0] if len(toks) == 1 else f"{toks[0]}, {toks[1]}")
+            continue
+        cur = toks[0]
+        for tok in toks[1:]:
+            low = tok.lower()
+            if _norm_place(tok) in UNKNOWN_LOCATION_SENTINELS:
+                continue
+            if re.fullmatch(r"[a-z]{2}", low) or low in US_STATES:
+                cur = f"{cur}, {tok}"
+            else:
+                out.append(cur)
+                cur = tok
+        out.append(cur)
+    out = [p for p in out if p and _norm_place(p) not in UNKNOWN_LOCATION_SENTINELS]
+    return out or ([raw] if _norm_place(raw) not in UNKNOWN_LOCATION_SENTINELS else [])
 
 
 def parse_one(raw: str) -> dict[str, Any]:
@@ -151,6 +201,11 @@ def parse_one(raw: str) -> dict[str, Any]:
     }
 
 
+def _dedup_key(item: dict[str, Any]) -> str:
+    return (f"{item.get('city')}|{item.get('bucket')}"
+            f"|{item.get('remote')}|{item.get('raw')}")
+
+
 def parse_locations(job: dict[str, Any]) -> list[dict[str, Any]]:
     raw_list = job.get("locations")
     parsed: list[dict[str, Any]] = []
@@ -161,10 +216,6 @@ def parse_locations(job: dict[str, Any]) -> list[dict[str, Any]]:
             return
         if isinstance(raw, dict):
             if raw.get("raw") or raw.get("city") or raw.get("remote"):
-                key = repr(sorted((k, str(v)) for k, v in raw.items() if v is not None))
-                if key in seen:
-                    return
-                seen.add(key)
                 item = dict(raw)
                 if "bucket" not in item:
                     blob = " ".join(str(item.get(k) or "") for k in ("raw", "city", "region"))
@@ -172,6 +223,13 @@ def parse_locations(job: dict[str, Any]) -> list[dict[str, Any]]:
                         item["bucket"] = "remote"
                     else:
                         item["bucket"] = _city_bucket(blob) or item.get("bucket") or "other"
+                # Same key namespace as the string branch below, so a
+                # persisted entry re-parsed from its own strings dedupes
+                # instead of doubling on every corpus round-trip.
+                key = _dedup_key(item)
+                if key in seen:
+                    return
+                seen.add(key)
                 parsed.append(item)
                 return
             raw = raw.get("name") or raw.get("location") or raw.get("label") or ""
@@ -180,7 +238,7 @@ def parse_locations(job: dict[str, Any]) -> list[dict[str, Any]]:
             return
         for part in _split_raw(text):
             item = parse_one(part)
-            key = f"{item.get('city')}|{item.get('bucket')}|{item.get('remote')}|{item.get('raw')}"
+            key = _dedup_key(item)
             if key in seen:
                 continue
             seen.add(key)
@@ -238,6 +296,23 @@ def city_matches(job: dict[str, Any], places: list[str] | None) -> bool:
         for loc in parsed:
             city = _norm_place(str(loc.get("city") or ""))
             raw = _norm_place(str(loc.get("raw") or ""))
-            if n and (n == city or n in city or n in raw or city in n):
+            if n and (n == city or _substr(n, city) or _substr(n, raw)
+                      or _substr(city, n)):
                 return True
     return False
+
+
+def _substr(needle: str, haystack: str) -> bool:
+    """Substring match with a word-boundary floor for short tokens.
+
+    One- and two-letter tokens (`N` from a split, initials) match virtually
+    any preference as raw substrings (`'n' in 'new york'`). Real short tokens
+    (`DC`, `UK`, `LA`) only ever occur as whole words, so require boundaries
+    below length 3 instead of dropping them — mirroring the METRO_BUCKETS
+    tiny-alias rule.
+    """
+    if not needle or not haystack:
+        return False
+    if len(needle) >= 3:
+        return needle in haystack
+    return re.search(r"\b" + re.escape(needle) + r"\b", haystack) is not None

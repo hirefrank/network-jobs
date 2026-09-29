@@ -86,30 +86,38 @@ class ReviewMatchesTests(unittest.TestCase):
         self.prefs = _load("preferences.json")
         self.listings = _load("listings-prefs.json")
 
-    def test_title_stem_strips_seniority(self):
+    def test_title_stem_keeps_domain_qualifier(self):
+        # #13: a bare headword collapses whole boards — retain the first
+        # qualifier so families stay vetoable.
         from network_jobs.review import title_stem
 
-        self.assertEqual(title_stem("Senior Product Manager, Growth"),
-                         "product")
+        self.assertEqual(title_stem("Staff Product Manager, Payments"),
+                         "product/payments")
+        self.assertEqual(title_stem("Product Manager, Safeguards (Generalist)"),
+                         "product/safeguards")
+        self.assertEqual(title_stem("Research Product Manager, Labs"),
+                         "research/product")
+        self.assertEqual(title_stem("Senior Product Manager"), "product")
         self.assertEqual(title_stem("Staff PM"), "product")
-        self.assertEqual(title_stem("Engineering Manager"), "engineering")
 
     def test_cluster_groups_families(self):
         from network_jobs.review import cluster_matches
 
         jobs = [
-            {"title": "Senior Product Manager", "category": "product",
+            {"title": "Senior Product Manager, Payments", "category": "product",
              "location": "NYC", "matchScore": 12},
-            {"title": "Staff PM, Growth", "category": "product",
+            {"title": "Staff PM, Payments", "category": "product",
              "location": "Remote", "matchScore": 10},
             {"title": "Data Center Architect", "category": "operations",
              "location": "Austin", "matchScore": 4},
         ]
         fams = cluster_matches(jobs, min_cluster=2)
         by_stem = {f["stem"]: f for f in fams}
-        self.assertIn("product", by_stem)
-        self.assertEqual(by_stem["product"]["count"], 2)
-        self.assertEqual(by_stem["product"]["medianScore"], 11.0)
+        self.assertIn("product/payments", by_stem)
+        self.assertEqual(by_stem["product/payments"]["count"], 2)
+        self.assertEqual(by_stem["product/payments"]["medianScore"], 11.0)
+        self.assertEqual(by_stem["product/payments"]["label"], "product/payments")
+        self.assertEqual(by_stem["product/payments"]["suggestedVeto"], "payments")
         # Singleton folds into the mixed bucket at min_cluster=2.
         mixed = [f for f in fams if f["stem"] == "(smaller families)"]
         self.assertEqual(len(mixed), 1)
@@ -501,7 +509,7 @@ class FingerprintExpiryTests(unittest.TestCase):
 
         a = self._job(externalId="1", url="https://fatboard.example/jobs/1")
         b = self._job(externalId="1", url="https://fatboard.example/jobs/1?src=dup")
-        merged = merge_jobs([], [a, b])
+        merged, _ = merge_jobs([], [a, b])
         self.assertEqual(len(merged), 1)
         self.assertEqual(job_fingerprint(a), job_fingerprint(b))
 
@@ -510,7 +518,7 @@ class FingerprintExpiryTests(unittest.TestCase):
 
         a = self._job(url="https://fatboard.example/jobs/a")
         b = self._job(url="https://careers.fatboard.example/spm")
-        merged = merge_jobs([], [a, b])
+        merged, _ = merge_jobs([], [a, b])
         self.assertEqual(len(merged), 1)
 
     def test_expire_only_when_pagination_complete(self):
@@ -522,10 +530,10 @@ class FingerprintExpiryTests(unittest.TestCase):
                       category="engineering", seniority="senior"),
         ]
         incoming = [self._job(externalId="1", url="https://fatboard.example/jobs/1")]
-        kept = merge_jobs(existing, incoming, expire_company="FatBoard", pagination_complete=False)
+        kept, _ = merge_jobs(existing, incoming, expire_company="FatBoard", pagination_complete=False)
         statuses = {j["externalId"]: j.get("status", "open") for j in kept}
         self.assertEqual(statuses["2"], "open")
-        closed = merge_jobs(existing, incoming, expire_company="FatBoard", pagination_complete=True)
+        closed, _ = merge_jobs(existing, incoming, expire_company="FatBoard", pagination_complete=True)
         statuses = {j["externalId"]: j.get("status", "open") for j in closed}
         self.assertEqual(statuses["1"], "open")
         self.assertEqual(statuses["2"], "closed")
@@ -534,6 +542,54 @@ class FingerprintExpiryTests(unittest.TestCase):
         self.assertEqual(summary["closedJobs"], 1)
         all_jobs = json.loads((self.corpus / "jobs-all.json").read_text())
         self.assertEqual(len(all_jobs), 2)
+
+    def test_expiry_skipped_on_filtered_batch(self):
+        # #16: a matches-only batch over a bigger board must not close live
+        # roles, even with --pagination-complete. Refusal is loud, not fatal.
+        from network_jobs.corpus import merge_jobs
+
+        existing = [
+            self._job(externalId="1", url="https://fatboard.example/jobs/1"),
+            self._job(title="Staff Engineer", externalId="2", url="https://fatboard.example/jobs/2",
+                      category="engineering", seniority="senior"),
+            self._job(title="Designer", externalId="3", url="https://fatboard.example/jobs/3"),
+        ]
+        incoming = [self._job(externalId="1", url="https://fatboard.example/jobs/1")]
+        merged, info = merge_jobs(
+            existing, incoming, expire_company="FatBoard",
+            pagination_complete=True, expected_total=3)
+        statuses = {j["externalId"]: j.get("status", "open") for j in merged}
+        self.assertEqual(statuses["2"], "open")
+        self.assertEqual(statuses["3"], "open")
+        self.assertTrue(info["expirySkipped"])
+        self.assertIn("filtered", info["expiryReason"])
+
+    def test_expiry_proceeds_on_full_coverage_and_force(self):
+        from network_jobs.corpus import merge_jobs
+
+        existing = [
+            self._job(externalId="1", url="https://fatboard.example/jobs/1"),
+            self._job(title="Old", externalId="gone", url="https://x/gone"),
+        ]
+        incoming = [self._job(externalId="1", url="https://fatboard.example/jobs/1")]
+        # Full coverage (seen == expected): proceeds.
+        merged, info = merge_jobs(
+            existing, incoming, expire_company="FatBoard",
+            pagination_complete=True, expected_total=1)
+        self.assertFalse(info["expirySkipped"])
+        self.assertEqual(info["expired"], 1)
+        # Subset + force: operator override proceeds.
+        merged, info = merge_jobs(
+            existing, incoming, expire_company="FatBoard",
+            pagination_complete=True, expected_total=9, force_expire=True)
+        self.assertFalse(info["expirySkipped"])
+        self.assertEqual(info["expired"], 1)
+        # Legacy path (no expected_total): unchanged behavior.
+        merged, info = merge_jobs(
+            existing, incoming, expire_company="FatBoard",
+            pagination_complete=True)
+        self.assertFalse(info["expirySkipped"])
+        self.assertEqual(info["expired"], 1)
 
     def test_rebuild_helper_honors_complete_flag(self):
         from network_jobs.corpus import rebuild
@@ -649,6 +705,107 @@ class ClassifierLocationTests(unittest.TestCase):
 
 
 class CrawlAndIntroTests(unittest.TestCase):
+    def test_intro_role_filters(self):
+        from network_jobs.intros import filter_jobs
+
+        jobs = [
+            {"title": "Senior Product Manager", "company": "Stripe",
+             "url": "https://stripe.com/jobs/1"},
+            {"title": "Staff PM, Growth", "company": "Figma",
+             "url": "https://figma.com/jobs/2"},
+        ]
+        self.assertEqual(len(filter_jobs(jobs)), 2)
+        got = filter_jobs(jobs, title="staff pm")
+        self.assertEqual([j["company"] for j in got], ["Figma"])
+        got = filter_jobs(jobs, company="stripe, inc.")
+        self.assertEqual([j["title"] for j in got],
+                         ["Senior Product Manager"])
+        got = filter_jobs(jobs, url="figma.com/jobs/2")
+        self.assertEqual(len(got), 1)
+        self.assertEqual(filter_jobs(jobs, title="nope"), [])
+
+    def test_rank_intros_filters_and_empty_errors(self):
+        import argparse
+        import io
+        from contextlib import redirect_stderr, redirect_stdout
+
+        tmp = Path(tempfile.mkdtemp(prefix="nj-intro-"))
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        search = tmp / "search"
+        search.mkdir()
+        (search / "ranked.json").write_text(json.dumps({
+            "k": 2, "n": 2, "showing": "2 of 2",
+            "jobs": [
+                {"title": "Senior Product Manager", "company": "Stripe",
+                 "url": "https://stripe.com/jobs/1", "matchScore": 21,
+                 "status": "open"},
+                {"title": "Designer", "company": "Figma",
+                 "url": "https://figma.com/jobs/2", "matchScore": 5,
+                 "status": "open"},
+            ],
+        }))
+        conns = tmp / "connections"
+        conns.mkdir()
+        (conns / "connections.json").write_text(json.dumps([
+            {"firstName": "Dan", "lastName": "Lee", "company": "Stripe",
+             "position": "Senior PM", "url": "", "email": "",
+             "connectedOn": "2024-01-01"},
+        ]))
+        args = argparse.Namespace(
+            data=str(tmp), jobs="", connections="", out="",
+            k_roles=2, k_forwarders=2,
+            title="product manager", url="", company="",
+            verbose=False,
+        )
+        from network_jobs import cli as cli_mod
+        out = io.StringIO()
+        with redirect_stdout(out):
+            rc = cli_mod.cmd_rank_intros(args)
+        self.assertEqual(rc, 0)
+        intros = json.loads((search / "intros.json").read_text())
+        self.assertEqual(len(intros["roles"]), 1)
+        self.assertEqual(intros["roles"][0]["company"], "Stripe")
+        args.title = "no such role"
+        err = io.StringIO()
+        with redirect_stderr(err):
+            rc = cli_mod.cmd_rank_intros(args)
+        self.assertEqual(rc, 1)
+        self.assertIn("no ranked jobs match", err.getvalue())
+
+    def test_search_verbose_prints_fit_brief(self):
+        import io
+        from contextlib import redirect_stdout
+
+        from network_jobs import cli as cli_mod
+
+        tmp = Path(tempfile.mkdtemp(prefix="nj-fit-"))
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        jobs = [{
+            "title": "Senior Product Manager", "company": "Stripe",
+            "department": "Product", "location": "New York, NY",
+            "url": "https://stripe.com/jobs/1", "matchScore": 21,
+            "matchReasons": ["category", "seniority", "query"],
+            "senioritySignals": [], "status": "open",
+        }]
+        (tmp / "connections").mkdir()
+        (tmp / "connections" / "connections.json").write_text(json.dumps([
+            {"firstName": "Dan", "lastName": "Lee", "company": "Stripe",
+             "position": "Senior PM", "url": "", "email": "",
+             "connectedOn": "2024-01-01"},
+        ]))
+        (tmp / "profile.json").write_text(json.dumps(
+            {"name": "", "email": "", "title": "", "company": "", "url": ""}))
+        (tmp / "preferences.json").write_text(json.dumps(
+            {"mustHaves": ["platform"]})),
+        out = io.StringIO()
+        with redirect_stdout(out):
+            cli_mod._print_fit_brief(tmp, jobs)
+        text = out.getvalue()
+        self.assertIn("Fit brief", text)
+        self.assertIn("category", text)
+        self.assertIn("warmth: 1 at Stripe", text)
+        self.assertIn("Dan", text)
+
     def test_listing_set_hash_skip_unchanged(self):
         from network_jobs.crawl import crawl_status, stamp_company_crawl
 
@@ -1055,6 +1212,88 @@ class CompaniesRefreshTests(unittest.TestCase):
         self.assertEqual([r["slug"] for r in results], ["acme"])
 
 
+class ParseLocationsIdempotencyTests(unittest.TestCase):
+    def test_round_trip_does_not_duplicate(self):
+        # #15: persisted locations[] re-parsed alongside location must not
+        # double — dict and string branches share one dedup namespace now.
+        from network_jobs.locations import parse_locations
+
+        raw = "San Francisco, Seattle, New York, Chicago, Atlanta, Remote"
+        once = parse_locations({"location": raw})
+        twice = parse_locations({"location": raw, "locations": once})
+        self.assertEqual(len(twice), len(once))
+        self.assertEqual(twice, once)
+
+    def test_stripe_comma_list_yields_one_entry_per_city(self):
+        from network_jobs.locations import parse_locations
+
+        entries = parse_locations(
+            {"location": "San Francisco, Seattle, New York, Chicago, Atlanta, Remote"})
+        cities = [e.get("city") for e in entries]
+        self.assertEqual(
+            cities,
+            ["San Francisco", "Seattle", "New York", "Chicago", "Atlanta", None])
+        buckets = {e.get("city"): e.get("bucket") for e in entries if e.get("city")}
+        self.assertEqual(buckets["San Francisco"], "sf")
+        self.assertEqual(buckets["Seattle"], "seattle")
+        self.assertEqual(buckets["New York"], "nyc")
+        self.assertTrue(entries[-1]["remote"])
+
+    def test_city_state_pairs_stay_whole(self):
+        # Two comma tokens = one place (city + state/country), never split.
+        from network_jobs.locations import parse_locations
+
+        sf = parse_locations({"location": "San Francisco, CA"})
+        self.assertEqual(len(sf), 1)
+        self.assertEqual(sf[0]["city"], "San Francisco")
+        self.assertEqual(sf[0]["region"], "CA")
+        dublin = parse_locations({"location": "Dublin, Ireland"})
+        self.assertEqual(len(dublin), 1)
+        self.assertEqual(dublin[0]["city"], "Dublin")
+
+    def test_state_reattaches_in_long_lists(self):
+        from network_jobs.locations import parse_locations
+
+        entries = parse_locations({"location": "Portland, Oregon, Remote"})
+        self.assertEqual(len(entries), 2)
+        self.assertEqual(entries[0]["city"], "Portland")
+        self.assertEqual(entries[0]["region"], "Oregon")
+        self.assertTrue(entries[1]["remote"])
+
+    def test_anywhere_parses_as_remote(self):
+        from network_jobs.locations import parse_locations
+
+        entries = parse_locations({"location": "anywhere"})
+        self.assertEqual(len(entries), 1)
+        self.assertTrue(entries[0]["remote"])
+        self.assertEqual(entries[0]["bucket"], "remote")
+
+
+class CityMatchFloorTests(unittest.TestCase):
+    def test_sentinel_location_matches_nothing(self):
+        # #11: Greenhouse "unknown location" sentinel must not pass any
+        # onsite preference.
+        from network_jobs.locations import city_matches
+
+        for place in ("New York", "Austin", "Paris", "San Francisco"):
+            with self.subTest(place=place):
+                self.assertFalse(city_matches({"location": "N/A"}, [place]))
+
+    def test_single_letter_token_matches_nothing(self):
+        # #11 follow-up: short tokens need word boundaries — 'n' is a
+        # substring of 'new york' but not a word in it.
+        from network_jobs.locations import city_matches
+
+        self.assertFalse(city_matches({"location": "N"}, ["Boston"]))
+        self.assertFalse(city_matches({"location": "X"}, ["Austin"]))
+
+    def test_short_real_tokens_still_match_on_word_boundaries(self):
+        from network_jobs.locations import city_matches
+
+        self.assertTrue(city_matches({"location": "Washington, DC"}, ["DC"]))
+        self.assertTrue(city_matches({"location": "New York, NY"}, ["New York"]))
+
+
 class LocationBucketRound3Tests(unittest.TestCase):
     def test_new_metro_buckets(self):
         from network_jobs.locations import location_buckets_for
@@ -1291,7 +1530,7 @@ class CorpusMergeTests(unittest.TestCase):
                      "postedAt": "2026-08-28"}]
         incoming = [{"title": "Eng", "company": "Acme", "location": "Remote",
                      "fingerprint": "fp:acme:abc123"}]
-        merged = merge_jobs(existing, incoming)
+        merged, _ = merge_jobs(existing, incoming)
         self.assertEqual(len(merged), 1)
         self.assertEqual(merged[0]["lastSeen"], "2026-09-10")
         self.assertEqual(merged[0]["postedAt"], "2026-08-28")
