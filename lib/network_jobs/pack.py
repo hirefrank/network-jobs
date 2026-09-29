@@ -203,3 +203,54 @@ def write_pack(pack: dict[str, Any], out_path: str | Path) -> Path:
     out = Path(out_path)
     out.write_text(json.dumps(pack, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return out
+
+
+def validate_pack(obj: Any) -> dict[str, Any]:
+    """Check that a downloaded object is a network-jobs pack. Raises ValueError."""
+    if not isinstance(obj, dict):
+        raise ValueError("pack must be a JSON object")
+    if obj.get("pack") != "network-jobs":
+        raise ValueError(
+            f"not a network-jobs pack (pack={obj.get('pack')!r}); "
+            "build one with `network-jobs build-pack`"
+        )
+    companies = obj.get("companies")
+    if not isinstance(companies, list):
+        raise ValueError("pack has no `companies` array")
+    return obj
+
+
+def fetch_pack(
+    url: str,
+    data_dir: str | Path | None = None,
+    name: str = "",
+) -> tuple[dict[str, Any], Path]:
+    """Download a published network pack, validate it, save under $DATA/packs/.
+
+    Returns (pack, saved_path). Overwrites an existing pack of the same name —
+    re-fetching is how packs refresh.
+    """
+    from .paths import data_home
+    import urllib.request
+
+    data = data_home(data_dir)
+    req = urllib.request.Request(url, headers={"User-Agent": "network-jobs/fetch-pack"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+    except Exception as exc:
+        raise ValueError(f"could not download pack from {url}: {exc}") from exc
+    try:
+        pack = validate_pack(json.loads(raw))
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError(f"pack at {url} is not valid JSON: {exc}") from exc
+
+    slug = slugify(basic_normalize(name)) if name else None
+    if not slug:
+        slug = slugify(basic_normalize(str(pack.get("label") or ""))) or "pack"
+    dest = data / "packs" / f"{slug}.json"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    write_pack(pack, dest)
+    return pack, dest

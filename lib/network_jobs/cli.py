@@ -889,6 +889,16 @@ def build_parser() -> argparse.ArgumentParser:
                     help="drop companies with fewer connections")
     bp.set_defaults(func=cmd_build_pack)
 
+    fp = sub.add_parser(
+        "fetch-pack",
+        help="download a published network pack into $DATA/packs/",
+    )
+    fp.add_argument("url", help="pack URL, e.g. https://hirefrank.com/network-pack.json")
+    fp.add_argument("--as", dest="as_name", default="",
+                    help="pack name (default: slug of the pack label)")
+    fp.add_argument("--data")
+    fp.set_defaults(func=cmd_fetch_pack)
+
     return p
 
 
@@ -904,6 +914,26 @@ def cmd_build_pack(args: argparse.Namespace) -> int:
     write_pack(pack, out)
     print(f"pack: {pack['totalConnections']} connections -> "
           f"{len(pack['companies'])} companies -> {out}")
+    return 0
+
+
+def cmd_fetch_pack(args: argparse.Namespace) -> int:
+    from .pack import fetch_pack
+    from .paths import data_home
+
+    pack, dest = fetch_pack(
+        args.url,
+        data_dir=getattr(args, "data", None),
+        name=getattr(args, "as_name", "") or "",
+    )
+    data = data_home(getattr(args, "data", None))
+    try:
+        shown = str(dest.relative_to(data))
+    except ValueError:
+        shown = str(dest)
+    label = pack.get("label") or "unlabeled"
+    print(f"pack: {label} — {pack.get('totalConnections')} connections -> "
+          f"{len(pack['companies'])} companies -> {shown}")
     return 0
 
 

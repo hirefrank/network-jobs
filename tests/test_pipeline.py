@@ -1676,5 +1676,98 @@ class BuildPackTests(unittest.TestCase):
         self.assertNotIn("jane-doe", slugs)
 
 
+class FetchPackTests(unittest.TestCase):
+    PACK = {
+        "pack": "network-jobs",
+        "packVersion": 1,
+        "label": "Test Owner",
+        "generatedAt": "2026-09-28",
+        "source": "LinkedIn connections export (company-aggregated; no personal data)",
+        "totalConnections": 4,
+        "companies": [
+            {"name": "Acme", "normalized": "acme", "slug": "acme",
+             "connectionCount": 3, "topTitles": ["product manager"]},
+            {"name": "Globex", "normalized": "globex", "slug": "globex",
+             "connectionCount": 1},
+        ],
+    }
+
+    def _serve(self, tmp):
+        """Serve tmp over HTTP on an ephemeral port; returns (server, url)."""
+        import functools
+        import http.server
+        import threading
+        handler = functools.partial(http.server.SimpleHTTPRequestHandler,
+                                    directory=tmp)
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        return server, f"http://127.0.0.1:{server.server_address[1]}"
+
+    def test_fetch_pack_downloads_validates_saves(self):
+        from network_jobs import pack as pack_mod
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "pack.json").write_text(json.dumps(self.PACK))
+            server, url = self._serve(tmp)
+            try:
+                with tempfile.TemporaryDirectory() as data:
+                    pack, dest = pack_mod.fetch_pack(f"{url}/pack.json",
+                                                    data_dir=data)
+                    self.assertEqual(pack["label"], "Test Owner")
+                    self.assertEqual(dest, Path(data) / "packs" / "test-owner.json")
+                    self.assertTrue(dest.is_file())
+                    saved = json.loads(dest.read_text())
+                    self.assertEqual(saved["totalConnections"], 4)
+                    # re-fetch refreshes in place
+                    pack2, dest2 = pack_mod.fetch_pack(f"{url}/pack.json",
+                                                      data_dir=data)
+                    self.assertEqual(dest2, dest)
+            finally:
+                server.shutdown()
+
+    def test_fetch_pack_as_name_override(self):
+        from network_jobs import pack as pack_mod
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "pack.json").write_text(json.dumps(self.PACK))
+            server, url = self._serve(tmp)
+            try:
+                with tempfile.TemporaryDirectory() as data:
+                    _, dest = pack_mod.fetch_pack(f"{url}/pack.json",
+                                                 data_dir=data, name="Frank")
+                    self.assertEqual(dest.name, "frank.json")
+            finally:
+                server.shutdown()
+
+    def test_fetch_pack_rejects_bad_shape(self):
+        from network_jobs import pack as pack_mod
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "nope.json").write_text(json.dumps({"hello": "world"}))
+            (Path(tmp) / "broken.json").write_text("not json at all {{{")
+            server, url = self._serve(tmp)
+            try:
+                with tempfile.TemporaryDirectory() as data:
+                    with self.assertRaises(ValueError):
+                        pack_mod.fetch_pack(f"{url}/nope.json", data_dir=data)
+                    with self.assertRaises(ValueError):
+                        pack_mod.fetch_pack(f"{url}/broken.json", data_dir=data)
+                    with self.assertRaises(ValueError):
+                        pack_mod.fetch_pack(f"{url}/missing.json", data_dir=data)
+            finally:
+                server.shutdown()
+
+    def test_fetch_pack_cli(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "pack.json").write_text(json.dumps(self.PACK))
+            server, url = self._serve(tmp)
+            try:
+                with tempfile.TemporaryDirectory() as data:
+                    rc = helper_main(["fetch-pack", f"{url}/pack.json",
+                                      "--data", data])
+                    self.assertEqual(rc, 0)
+                    self.assertTrue((Path(data) / "packs" / "test-owner.json").is_file())
+            finally:
+                server.shutdown()
+
+
 if __name__ == "__main__":
     unittest.main()

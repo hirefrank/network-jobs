@@ -4,7 +4,7 @@ description: Find jobs where you're already connected. Search openings in your l
 license: MIT
 allowed-tools: Bash(*)
 metadata:
-  version: "3.0.0"
+  version: "3.1.0"
 ---
 
 # Network Jobs
@@ -36,6 +36,7 @@ cat "$DATA/corpus/manifest.json"
 | `corpus/{category}-{loc}-{seniority}.json` | Preferred granular shards |
 | `search/ranked.json` | Top-K from `helpers/rank-jobs.py` — read this, not whole shards |
 | `companies/companies.json` | Connection graph (for “who do I know?”) |
+| `packs/*.json` | Fetched network packs — someone else's company-aggregated map (see Network packs) |
 
 **Location buckets:** `nyc`, `sf`, `la`, `seattle`, `austin`, `boston`, `chicago`, `denver`, `dc`, `remote`, `other`  
 **Seniority buckets:** `senior`, `mid`  
@@ -138,6 +139,40 @@ Same ranker with `--query` including remote / city. Still prefer granular shards
 ### Pattern E: Salary filter
 
 Ranker already downranks missing/low salary vs `preferences.salaryMin`. For an explicit floor, pass it in the query (`over 200k`) and skip jobs with no salary when presenting.
+
+### Network packs: someone else's map, your search
+
+A **network pack** is a company-aggregated map of someone else's professional
+network: company names, connection counts, and title keywords — no names,
+emails, URLs, or dates. It answers one question: *"where does this person have
+connections?"* It is a map, not a menu: it shows where the owner has
+connections; intros are at the owner's discretion. Never promise an intro on
+the pack's behalf.
+
+Fetch one with (the suite's one sanctioned remote fetch — everything else stays
+local):
+
+```bash
+DATA="${NETWORK_JOBS_HOME:-$HOME/.network-jobs}"  # always resolve from the env; never export a literal DATA
+network-jobs fetch-pack https://hirefrank.com/network-pack.json
+# pack: Frank Harris — 3156 connections -> 2266 companies -> packs/frank-harris.json
+```
+
+Packs live under `$DATA/packs/*.json` and are **separate from the user's own
+network**: the user's `connections.json` drives ranking and intro matching
+(forwarders come from there — real people they can contact directly). A pack is
+a read-only overlay with no names, so it can never inject forwarders.
+
+Two uses:
+
+1. **Discovery** — "Where is Frank's network densest?" Read the pack, report
+   top companies by `connectionCount` (with `topTitles` where present).
+2. **After a search** — cross-reference the ranked companies against each
+   fetched pack. When there's overlap, flag it with counts:
+   "3 of your top 10 are at companies where Frank Harris has 10+ connections —
+   Stripe (12), Figma (9). Want me to draft the ask?" The ask itself goes
+   through the **intro-email-generator** skill with the pack owner as the
+   forwarder.
 
 ## Output Format
 
