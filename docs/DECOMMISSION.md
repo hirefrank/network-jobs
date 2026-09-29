@@ -11,17 +11,17 @@ Tracked as deferred work from the Local Network Jobs Skills plan. The Cloudflare
 - [ ] Stop vendoring curl-based `network-jobs` from `hirefrank/skills` (or re-point to this suite)
 - [ ] Update `.agents/README.md` / operator docs to point at this repo’s install
 - [ ] Remove Jobs deploy/preview target from `scripts/ci/targets.ts` and `docs/ci.md`
-- [ ] Remove root shortcuts (`pnpm deploy:jobs`, `pnpm jobs:health`, etc.) if unused
-- [ ] Archive or delete `apps/jobs` workspace (Worker, D1, R2, Queue, CLI)
-- [ ] Remove `packages/cli-core` Jobs HTTP commands if nothing else depends on them
-- [ ] Update hirefrank.com/skills marketing away from `jobs.hirefrank.com` JSON
+- [ ] Remove root shortcuts (`pnpm dev:jobs`, `build:jobs`, `deploy:jobs`, `jobs:cli`, `jobs:health`, `jobs:crawl:*`, `hf:jobs`) if unused
+- [ ] Archive or delete `apps/jobs` workspace (Worker `jobs-api`, D1 `advisor-jobs-db`, R2 `advisor-skills-export`, crawl queue, 2 crons)
+- [ ] Remove `packages/cli-core` Jobs HTTP commands (`commands/jobs.ts`, `commander/jobs.ts`, `jobs-admin.ts`, exports, `HF_BINARY_OWNED_NAMESPACES`) if nothing else depends on them
+- [ ] Update the `network-jobs` entry in the `hirefrank/skills` repo to point at this suite + landing page (this feeds both `hirefrank.com/skills` via `www/src/lib/github-skills.ts` and biz vendoring via `skills-lock.json` — neither consumes the hosted JSON directly)
 
 ### 2. Cloudflare / hosted
 
 - [ ] Disable crons and queue consumers
 - [ ] Export any advisor data you still need into local `~/.network-jobs/`
 - [ ] Delete Worker `jobs-api`, D1 `advisor-jobs-db`, R2 `advisor-skills-export`, crawl queue
-- [ ] DNS / custom domain for `jobs.hirefrank.com` → sunset or redirect to this README
+- [ ] DNS / custom domain for `jobs.hirefrank.com` → sunset, or redirect to `https://hirefrank.com/network-jobs/`
 
 ### 3. Public skills
 
