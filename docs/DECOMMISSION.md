@@ -31,7 +31,7 @@ Tracked as deferred work from the Local Network Jobs Skills plan. The Cloudflare
 
 ```bash
 npx skills add hirefrank/network-jobs -g -a claude-code -a cursor -a codex
-npx github:hirefrank/network-jobs setup --agent auto
+npm i -g @hirefrank/network-jobs@latest && network-jobs setup --agent auto
 ```
 
 ## Out of scope for decommission PR

@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.3.1 — 2026-09-29
+
+First npm release (`@hirefrank/network-jobs`). Install with
+`npm i -g @hirefrank/network-jobs@latest && network-jobs setup --agent auto`
+(`npx --yes @hirefrank/network-jobs@latest setup …` for zero-install).
+
+- **`network-jobs update` handles npm-global installs** — detects
+  `*/lib/node_modules/@hirefrank/network-jobs` and refreshes via
+  `npm i -g @hirefrank/network-jobs@latest` instead of purging the npx cache.
+- **Launcher + setup hints prefer the registry** over the GitHub tarball.
+- **Packaging fixes** — `publishConfig.access: public`, normalized `bin` path,
+  merged duplicate `scripts` keys, `prepack` removes `__pycache__/` so test
+  runs never pollute the tarball.
+
 ## v1.3.0 — 2026-09-28
 
 Everything since v1.2.0: five rounds of matching/ranking review, a full

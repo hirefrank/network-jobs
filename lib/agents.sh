@@ -82,6 +82,17 @@ network_jobs_list_agents() {
   done
 }
 
+# True when this suite root is an npm-global install
+# (e.g. ~/.local/share/mise/installs/node/*/lib/node_modules/@hirefrank/network-jobs).
+network_jobs_is_npm_global_install() {
+  local root="${1:-}"
+  [[ -z "$root" ]] && return 1
+  case "$root" in
+    */lib/node_modules/@hirefrank/network-jobs|*/lib/node_modules/@hirefrank/network-jobs/) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # True when this suite root is an npx/pnpm store copy (not a git checkout).
 network_jobs_is_packaged_install() {
   local root="${1:-}"

@@ -8,7 +8,7 @@ Works with any agent that loads [Agent Skills](https://agentskills.io) (Claude C
 
 If you're an agent working from this repo rather than a human reading it:
 
-1. **Install the skills into yourself** — `npx --yes 'github:hirefrank/network-jobs#main' setup --agent auto` (or `npx skills add hirefrank/network-jobs -g -a …`, then `network-jobs setup` for data + launcher).
+1. **Install the skills into yourself** — `npx --yes @hirefrank/network-jobs@latest setup --agent auto` (or `npx skills add hirefrank/network-jobs -g -a …`, then `network-jobs setup` for data + launcher).
 2. **Start with `network-jobs-setup`** — it turns the user's résumé into `profile.json` + `preferences.json` via an interview. Everything downstream reads those two files.
 3. **Follow the skills table below** — each `SKILL.md` is self-contained and states its inputs/outputs. The day-to-day pair is `careers-discover` + `jobs-ingest` (build the corpus) and `network-jobs` (search it).
 4. **For routing**, run `network-jobs routing` — it prints a snippet to drop into a project instruction file so future sessions pick the right skill.
@@ -18,10 +18,23 @@ Always read [SCHEMA.md](SCHEMA.md) for data paths and JSON shapes. Daily use liv
 ## Install
 
 ```bash
-npx --yes 'github:hirefrank/network-jobs#main' setup --agent auto
+npm i -g @hirefrank/network-jobs@latest
+network-jobs setup --agent auto
 ```
 
 This creates `~/.network-jobs/`, installs `agent-browser` when missing, puts `network-jobs` on PATH (`~/.local/bin`), and symlinks all six skills into each detected agent’s skills directory.
+
+Zero-install try (no global install):
+
+```bash
+npx --yes @hirefrank/network-jobs@latest setup --agent auto
+```
+
+Bleeding edge from git main:
+
+```bash
+npx --yes 'github:hirefrank/network-jobs#main' setup --agent auto
+```
 
 ```bash
 network-jobs setup --agent claude-code,cursor,codex
@@ -74,7 +87,7 @@ Always read [SCHEMA.md](SCHEMA.md) for paths and JSON shapes.
 
 ## Quick start
 
-1. **Install** — `npx --yes 'github:hirefrank/network-jobs#main' setup --agent auto`
+1. **Install** — `npm i -g @hirefrank/network-jobs@latest && network-jobs setup --agent auto`
 
 2. **Résumé**
 
@@ -122,9 +135,11 @@ network-jobs uninstall [--yes]    # alias for reset --data
 
 # Day-to-day (also available in your agent):
 network-jobs search [--query "..."] [-k N] [--company-cap N] [--include-stale]
+network-jobs intros [--k-roles N] [--k-forwarders N]
 network-jobs companies [--sort connections|name|crawl]
 network-jobs refresh [--company NAME] [--limit N]
 network-jobs demo [-k N] [--company-cap N]   # synthetic jobs, no network/disk
+network-jobs embed-setup                     # one-time fastembed for semantic search
 ```
 
 Skills self-describe for routing. `network-jobs routing` prints an optional snippet for a project instruction file.
@@ -147,7 +162,7 @@ Skills self-describe for routing. `network-jobs routing` prints an optional snip
 
 ```bash
 export NETWORK_JOBS_HOME=/tmp/nj-test
-npx --yes 'github:hirefrank/network-jobs#main' setup --agent auto --no-browser
+npx --yes @hirefrank/network-jobs@latest setup --agent auto --no-browser
 export PATH="$HOME/.local/bin:$PATH"   # if setup just installed the launcher there
 SUITE="$(network-jobs which | sed -n 's/^suite=//p')"   # fixtures ship in the suite
 network-jobs import "$SUITE/fixtures/Connections.csv"

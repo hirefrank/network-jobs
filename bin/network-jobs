@@ -129,11 +129,15 @@ usage_update() {
   cat <<'EOF'
 Usage: network-jobs update [options]
 
-Refresh the suite to the latest main, rewrite skill symlinks, and ensure
+Refresh the suite to the latest release, rewrite skill symlinks, and ensure
 agent-browser is installed.
 
+When this CLI was installed via npm -g, update runs:
+  npm i -g @hirefrank/network-jobs@latest
+then re-runs local setup.
+
 When this CLI was installed via npx, update clears the cached package copy
-and re-runs: npx github:hirefrank/network-jobs#main setup …
+and re-runs: npx --yes @hirefrank/network-jobs@latest setup …
 
 When run from a local git checkout, update pulls (if possible) and re-runs
 local setup against that tree.
@@ -147,7 +151,7 @@ Options (passed through to setup):
 
 Examples:
   network-jobs update
-  npx github:hirefrank/network-jobs#main update
+  npm i -g @hirefrank/network-jobs@latest && network-jobs setup --agent auto --force
 EOF
 }
 
@@ -360,7 +364,7 @@ uninstall is an alias for reset --data.
 Examples:
   network-jobs reset --yes
   network-jobs uninstall --yes --purge-cache
-  npx github:hirefrank/network-jobs setup --agent auto
+  network-jobs setup --agent auto
 EOF
 }
 
@@ -572,7 +576,7 @@ cmd_reset() {
   echo
   echo "Reset complete ($removed removed)."
   if [[ "$wipe_data" -eq 1 ]]; then
-    echo "Reinstall: npx github:hirefrank/network-jobs#main setup --agent auto"
+    echo "Reinstall: npm i -g @hirefrank/network-jobs@latest && network-jobs setup --agent auto"
   else
     echo "Re-link skills: network-jobs setup --agent auto"
   fi
@@ -599,6 +603,15 @@ cmd_update() {
   fi
 
   if network_jobs_is_packaged_install "$ROOT"; then
+    if network_jobs_is_npm_global_install "$ROOT"; then
+      echo "Updating npm-global install (@hirefrank/network-jobs)…"
+      if command -v npm >/dev/null 2>&1 && npm i -g '@hirefrank/network-jobs@latest'; then
+        echo "Re-running setup…"
+        exec "$ROOT/setup" "${setup_args[@]}"
+      fi
+      echo "error: npm update failed — run: npm i -g @hirefrank/network-jobs@latest" >&2
+      return 1
+    fi
     echo "Updating from GitHub (purging cached suite first)…"
     network_jobs_purge_package_cache
     local runner
@@ -606,9 +619,9 @@ cmd_update() {
       echo "error: neither pnpm nor npx is usable — cannot re-fetch the suite" >&2
       return 1
     fi
-    # Fresh process so the runner resolves a new store path for #main
+    # Fresh process so the runner resolves a new store path for @latest
     # shellcheck disable=SC2086
-    exec $runner 'github:hirefrank/network-jobs#main' setup "${setup_args[@]}"
+    exec $runner '@hirefrank/network-jobs@latest' setup "${setup_args[@]}"
   fi
 
   if [[ -d "$ROOT/.git" ]]; then

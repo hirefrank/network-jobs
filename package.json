@@ -1,10 +1,17 @@
 {
   "name": "@hirefrank/network-jobs",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "Local-first Network Jobs skill suite: LinkedIn connections \u2192 career pages \u2192 warm intros",
   "license": "MIT",
   "bin": {
-    "network-jobs": "./bin/network-jobs"
+    "network-jobs": "bin/network-jobs"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "python3 tests/test_pipeline.py",
+    "prepack": "find . -path ./node_modules -prune -o -name '__pycache__' -type d -prune -exec rm -rf {} +"
   },
   "files": [
     "bin/",
@@ -20,9 +27,6 @@
   ],
   "engines": {
     "node": ">=18"
-  },
-  "scripts": {
-    "test": "python3 tests/test_pipeline.py"
   },
   "repository": {
     "type": "git",

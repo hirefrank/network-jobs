@@ -23,7 +23,7 @@ Always read [SCHEMA.md](../../SCHEMA.md) first.
    - If missing, tell the user to run:
      ```bash
      npx skills add hirefrank/network-jobs -g -a claude-code -a cursor -a codex
-     npx --yes 'github:hirefrank/network-jobs#main' setup --agent auto
+      npx --yes @hirefrank/network-jobs@latest setup --agent auto
      ```
      or `network-jobs setup --agent auto` / `network-jobs doctor`.
    - Confirm dirs exist: `connections/`, `companies/`, `triage/`, `corpus/`, `config/`, `logs/`, `resume/`.

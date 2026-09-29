@@ -244,10 +244,10 @@ if [[ -n "$root" && -x "$root/bin/network-jobs" ]]; then
   exec "$root/bin/network-jobs" "$@"
 fi
 if command -v pnpm >/dev/null 2>&1 && pnpm --version >/dev/null 2>&1; then
-  exec pnpm dlx 'github:hirefrank/network-jobs#main' "$@"
+  exec pnpm dlx '@hirefrank/network-jobs@latest' "$@"
 fi
 if command -v npx >/dev/null 2>&1 && npx --version >/dev/null 2>&1; then
-  exec npx --yes 'github:hirefrank/network-jobs#main' "$@"
+  exec npx --yes '@hirefrank/network-jobs@latest' "$@"
 fi
 echo "network-jobs: suite not found and no pnpm/npx available" >&2
 exit 1
@@ -400,7 +400,7 @@ step=1
 if command -v network-jobs >/dev/null 2>&1; then
   cli_invocation="network-jobs"
 else
-  cli_invocation="npx --yes 'github:hirefrank/network-jobs#main'"
+  cli_invocation="npx --yes @hirefrank/network-jobs@latest"
 fi
 
 has_resume=0
