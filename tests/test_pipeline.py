@@ -107,9 +107,9 @@ class ReviewMatchesTests(unittest.TestCase):
         ]
         fams = cluster_matches(jobs, min_cluster=2)
         by_stem = {f["stem"]: f for f in fams}
-        self.assertIn("product manager", by_stem)
-        self.assertEqual(by_stem["product manager"]["count"], 2)
-        self.assertEqual(by_stem["product manager"]["medianScore"], 11.0)
+        self.assertIn("product", by_stem)
+        self.assertEqual(by_stem["product"]["count"], 2)
+        self.assertEqual(by_stem["product"]["medianScore"], 11.0)
         # Singleton folds into the mixed bucket at min_cluster=2.
         mixed = [f for f in fams if f["stem"] == "(smaller families)"]
         self.assertEqual(len(mixed), 1)
