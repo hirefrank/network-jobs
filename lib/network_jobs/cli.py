@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -37,7 +38,7 @@ def _match_semantic(
 ) -> tuple[list[float] | None, dict[str, list[float]]]:
     """(resume_vector, job_vectors) for the triage path.
 
-    Embeds the résumé once per run; job vectors come from the corpus cache
+    Embeds the resume once per run; job vectors come from the corpus cache
     (triage listings that were previously merged resolve by fingerprint).
     (None, {}) when no provider is configured.
     """
@@ -84,6 +85,7 @@ def _do_match_prefs(
         "matchDepartments": result["matchDepartments"],
         "matchCategories": result["matchCategories"],
         "reasonCounts": result["reasonCounts"],
+        "ambiguousSeniority": result["ambiguousSeniority"],
         "warnings": result["warnings"],
         "ingestDefault": "matches",
         "jobs": result["jobs"],
@@ -136,6 +138,7 @@ def cmd_match_prefs(args: argparse.Namespace) -> int:
         "matchDepartments": result["matchDepartments"],
         "matchCategories": result["matchCategories"],
         "reasonCounts": result["reasonCounts"],
+        "ambiguousSeniority": result["ambiguousSeniority"],
         "warnings": result["warnings"],
     }
     _dump(quiet, args.verbose)
@@ -249,6 +252,19 @@ def cmd_review_matches(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_fetch_descriptions(args: argparse.Namespace) -> int:
+    from .descriptions import fetch_descriptions
+
+    result = fetch_descriptions(
+        args.triage_dir,
+        source="listings" if args.all else "matches",
+        timeout=args.timeout,
+        max_chars=args.max_chars,
+    )
+    _dump(result, args.verbose)
+    return 0
+
+
 def cmd_rank(args: argparse.Namespace) -> int:
     result = rank_corpus(
         data_dir=args.data,
@@ -345,17 +361,17 @@ def cmd_search(args: argparse.Namespace) -> int:
         url = job.get("url") or job.get("jdUrl") or ""
         if url:
             print(f"  {url}")
-    if getattr(args, "verbose", False):
+    if args.verbose:
         _print_fit_brief(data_home(args.data), result["jobs"])
     return 0
 
 
 def _print_fit_brief(data: Path, jobs: list[dict[str, Any]]) -> None:
-    """Verbose-only fit evidence per role (#14): reasons, résumé mapping,
+    """Verbose-only fit evidence per role (#14): reasons, resume mapping,
     connection warmth, gaps. Default output stays terse; the agent narrates
     from this evidence instead of the skill paraphrasing blind."""
     from .intros import _score_forwarder, connections_at_company
-    from .prefs import _keyword_hit, load_resume_keywords, name_tokens
+    from .prefs import load_resume_keywords, must_have_hits, name_tokens
     from .text import tokenize
 
     profile = _load_json(data / "profile.json", {})
@@ -388,8 +404,8 @@ def _print_fit_brief(data: Path, jobs: list[dict[str, Any]]) -> None:
             tokens = set(tokenize(blob))
             hits = sorted({k for k in keywords
                            if k.lower() in tokens or k.lower() in blob})[:6]
-            mh = _keyword_hit(blob, must_haves) if must_haves else []
-            print(f"    résumé hits: {', '.join(hits) if hits else 'none'} | "
+            mh = must_have_hits(job, must_haves) if must_haves else []
+            print(f"    resume hits: {', '.join(hits) if hits else 'none'} | "
                   f"mustHaves: {', '.join(mh) if mh else 'none matched'}")
         people = connections_at_company(connections, company)
         if people:
@@ -402,8 +418,13 @@ def _print_fit_brief(data: Path, jobs: list[dict[str, Any]]) -> None:
                 name = str(best.get("name") or
                            f"{best.get('firstName') or ''} {best.get('lastName') or ''}".strip())
                 pos = str(best.get("position") or "position unknown")
+                # Connection age is display context only — never closeness.
+                year = ""
+                m = re.search(r"(\d{4})", str(best.get("connectedOn") or ""))
+                if m:
+                    year = f", connected {m.group(1)}"
                 print(f"    warmth: {len(people)} at {company} · "
-                      f"best: {name} ({pos})")
+                      f"closest title match: {name} ({pos}{year})")
             else:
                 print(f"    warmth: {len(people)} at {company} (no named contacts)")
         else:
@@ -826,6 +847,7 @@ def cmd_rank_intros(args: argparse.Namespace) -> int:
     title = getattr(args, "title", "") or ""
     url = getattr(args, "url", "") or ""
     company = getattr(args, "company", "") or ""
+    prefer = [str(p) for p in (getattr(args, "prefer", None) or [])]
     if title or url or company:
         jobs = filter_jobs(jobs, title=title, url=url, company=company)
         if not jobs:
@@ -838,7 +860,8 @@ def cmd_rank_intros(args: argparse.Namespace) -> int:
     )
     if not isinstance(connections, list):
         connections = []
-    result = rank_intros(jobs, connections, k_roles=args.k_roles, k_forwarders=args.k_forwarders)
+    result = rank_intros(jobs, connections, k_roles=args.k_roles,
+                       k_forwarders=args.k_forwarders, prefer=prefer)
     dest = Path(args.out) if args.out else data / "search" / "intros.json"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
@@ -856,6 +879,8 @@ def cmd_rank_intros(args: argparse.Namespace) -> int:
         applied["url"] = url
     if company:
         applied["company"] = company
+    if prefer:
+        applied["prefer"] = prefer
     if applied:
         quiet["filters"] = applied
     _dump(quiet, args.verbose)
@@ -975,7 +1000,6 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="network-jobs-helper", add_help=True)
     p.add_argument("-v", "--verbose", action="store_true", help="print extra fields")
     sub = p.add_subparsers(dest="cmd", required=True)
-
     m = sub.add_parser("match-prefs", help="score triage listings against preferences.json")
     m.add_argument("--triage-dir", required=True)
     m.add_argument("--listings")
@@ -984,6 +1008,15 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--data")
     m.add_argument("--company", default="")
     m.set_defaults(func=cmd_match_prefs)
+
+    fd = sub.add_parser("fetch-descriptions",
+                        help="fetch JD bodies for staged matches into matches.json")
+    fd.add_argument("--triage-dir", required=True)
+    fd.add_argument("--all", action="store_true",
+                    help="fetch for listings.json instead of matches.json")
+    fd.add_argument("--timeout", type=int, default=30)
+    fd.add_argument("--max-chars", type=int, default=10000)
+    fd.set_defaults(func=cmd_fetch_descriptions)
 
     v = sub.add_parser("review-matches", help="cluster a match-prefs shortlist into job families for empirical vetoing")
     v.add_argument("--triage-dir", required=True)
@@ -1097,6 +1130,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="only roles whose url contains this text")
     ri.add_argument("--company", default="",
                     help="only roles at this company (normalized match)")
+    ri.add_argument("--prefer", action="append", default=[],
+                    help="pin a person to the top of forwarders by name (repeatable)")
     ri.set_defaults(func=cmd_rank_intros)
 
     es = sub.add_parser("embed-setup", help="install fastembed + warm the embedding model (one time)")
@@ -1131,6 +1166,13 @@ def build_parser() -> argparse.ArgumentParser:
     fp.add_argument("--data")
     fp.set_defaults(func=cmd_fetch_pack)
 
+    # Every subcommand honors -v/--verbose in trailing position (#17).
+    # Helpers and the bin wrapper append flags after the subcommand, where
+    # the top-level flag is unreachable — without this, `search -v` and
+    # friends fail with "unrecognized arguments".
+    for _sub in sub.choices.values():
+        _sub.add_argument("-v", "--verbose", action="store_true",
+                          help="print extra fields")
     return p
 
 

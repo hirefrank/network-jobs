@@ -1,4 +1,4 @@
-"""Local ranker over corpus shards + prefs + résumé keywords."""
+"""Local ranker over corpus shards + prefs + resume keywords."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from typing import Any
 from .dates import parse_date_flexible
 from .locations import BUCKET_ORDER
 from .paths import data_home
-from .prefs import load_resume_keywords, name_tokens, score_job
+from .prefs import load_resume_keywords, name_tokens, score_job, seniority_unconfirmed
 
 DEFAULT_K = 25
 
@@ -137,7 +137,7 @@ def _semantic_context(
     resume_text: str,
     query: str | None,
 ) -> tuple[list[float] | None, list[float] | None, dict[str, list[float]]]:
-    """Embed résumé + query once per run; resolve cached job vectors by fp.
+    """Embed resume + query once per run; resolve cached job vectors by fp.
 
     Returns (resume_vector, query_vector, {fingerprint: vector}). Everything
     is None/{} when no embedding provider is available, in which case callers
@@ -194,7 +194,7 @@ def rank_corpus(
     profile = _read_json(root / "profile.json") or {}
     keywords = load_resume_keywords(resume_text, exclude=name_tokens(profile)) if resume_text else []
     jobs, shard_files = _iter_shards(corpus, prefs, query)
-    # Opt-in semantic signals: résumé vector replaces the keyword `resume`
+    # Opt-in semantic signals: resume vector replaces the keyword `resume`
     # bonus; query vector adds a small boost on top of lexical `query` hits.
     # No provider -> all None/{}, scores identical to before.
     resume_vector, query_vector, job_vectors = _semantic_context(
@@ -262,9 +262,11 @@ def rank_corpus(
                         job["matchScore"] = float(job.get("matchScore") or 0) + qb
                         job.setdefault("matchReasons", []).append("query-semantic")
     # Stable multi-pass sort: stale sinks to the bottom, then score desc,
-    # then most-recently-seen first, then title.
+    # then most-recently-seen first, then title. Confirmed seniority wins
+    # score ties over ambiguous (#23).
     scored.sort(key=lambda j: str(j.get("title") or ""))
     scored.sort(key=lambda j: str(j.get("lastSeen") or ""), reverse=True)
+    scored.sort(key=lambda j: 1 if seniority_unconfirmed(j) else 0)
     scored.sort(key=lambda j: (bool(j.get("stale")), -float(j.get("matchScore") or 0)))
     n = len(scored)
     k_eff = max(0, min(int(k), n))

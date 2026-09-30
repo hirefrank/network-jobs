@@ -30,7 +30,7 @@ cat "$DATA/corpus/manifest.json"
 |------|---------|
 | `profile.json` | Search header + intro footer identity |
 | `preferences.json` | Default work mode, locations, categories, seniority |
-| `resume/text.md` | Résumé text for intros / profile fill |
+| `resume/text.md` | Resume text for intros / profile fill |
 | `corpus/manifest.json` | Category index + granular file map |
 | `corpus/{category}.json` | Full category list |
 | `corpus/{category}-{loc}-{seniority}.json` | Preferred granular shards |
@@ -57,7 +57,7 @@ jq . "$DATA/corpus/manifest.json"
 
 If `companies/companies.json` is missing → run **network-jobs-import** (or ask for a LinkedIn ZIP). Do not invent a graph.
 
-If `profile.json` `name` or `email` is empty → run **network-jobs-setup** (résumé import + profile). Discovery can proceed without a profile; search + intros should not.
+If `profile.json` `name` or `email` is empty → run **network-jobs-setup** (resume import + profile). Discovery can proceed without a profile; search + intros should not.
 
 If `preferences.json` is missing or `interviewComplete` is not true → offer **network-jobs-setup** preferences interview (location, remote/hybrid/onsite, roles) before broad searches. User can skip and override per query.
 
@@ -189,7 +189,7 @@ Two uses:
 The strict contract covers default output only. When the user asks *why* a role
 fits (or you need fit evidence before drafting intros), re-run with
 `network-jobs search -v`: it appends a fit brief per role (recorded
-`matchReasons`, résumé keyword hits, mustHaves hits, connection warmth with
+`matchReasons`, resume keyword hits, mustHaves hits, connection warmth with
 best forwarder, gap flags). Narrate from that evidence — do not invent fit
 the brief doesn't support.
 
@@ -219,11 +219,11 @@ Connections at Justworks: …
 
 ## Helpers
 
-- [`helpers/rank-jobs.py`](helpers/rank-jobs.py) — corpus shards + prefs + résumé keywords → `$DATA/search/ranked.json` (`Showing K of N`)
+- [`helpers/rank-jobs.py`](helpers/rank-jobs.py) — corpus shards + prefs + resume keywords → `$DATA/search/ranked.json` (`Showing K of N`)
 
 ## Related Skills
 
-- **network-jobs-setup** — profile, résumé, preferences interview
+- **network-jobs-setup** — profile, resume, preferences interview
 - **careers-discover** / **jobs-ingest** — refresh local openings
 - **intro-email-generator** — draft forwardable warm intro. After ranked jobs, run `rank-intros.py` (1–2 roles, 1–2 forwarders; fetch JD only for those URLs).
 - **network-jobs-import** — refresh LinkedIn graph

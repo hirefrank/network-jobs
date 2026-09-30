@@ -110,6 +110,37 @@ python3 "$SUITE/skills/careers-discover/helpers/match-prefs.py" \
 
 This writes `index/matches.json` and patches INVENTORY with **N of M match prefs** plus a department histogram. Quiet JSON on stdout includes composition (`matchDepartments`, `matchCategories`, `reasonCounts`, `warnings`).
 
+7b. **Fetch descriptions for matches (required helper)**
+
+Titles alone cap everything downstream. Fetch bodies for the shortlist —
+never the whole board:
+
+```bash
+python3 "$SUITE/skills/careers-discover/helpers/fetch-descriptions.py" \
+  --triage-dir "$TRIAGE" --company "$NAME"
+```
+
+Fills `description` (truncated plain text) plus `descriptionFetchedAt` /
+`descriptionSource`, and fills `department` from the ATS payload when the
+row lacks one. Fetch failures never fail the run — undescribed rows score
+exactly as before. Bodies ride through ingest automatically.
+
+7b. **Fetch descriptions for matches (required helper)**
+
+Titles alone cap everything downstream (scoring, fit brief, intros). Fetch
+bodies for the shortlist — never the whole board:
+
+```bash
+python3 "$SUITE/skills/careers-discover/helpers/fetch-descriptions.py" \
+  --triage-dir "$TRIAGE" --company "$NAME"
+```
+
+This fills `description` (truncated plain text, ~10k chars) plus
+`descriptionFetchedAt`/`descriptionSource` on matches.json rows, and fills
+`department` from the ATS payload when the row lacks one. Fetch failures
+never fail the run — undescribed rows score exactly as before. Bodies flow
+through ingest automatically (`dict` copies end to end).
+
 To review the shortlist as job families instead of a flat list (so deal-breakers
 are set against observed counts), run:
 
@@ -135,7 +166,7 @@ before/after counts.
 
 9. **Hand off (hard stop)**
    - Point at each triage dir. Quote the helper’s `showing` line (e.g. `14 of 120 match prefs`) — do not paste the full listings array.
-   - Offer `review-matches` to walk families before ingest (“18 matched across 4 families — want to veto any?”).
+   - Offer `review-matches` to walk families before ingest (“18 matched across 4 families — want to veto any?”). Present the veto choice with the host's structured question tool when one is available (multi-select over families, counts in the labels), not a prose list.
    - If the run surfaced something that looks like a **suite defect** rather than a site quirk (malformed listings, dedup collapse, zero-yield pagination on a board that should list), say so and offer to file it: `network-jobs report --dry-run` first, show the bundle, and only file after explicit confirmation.
    - Ask whether to run `jobs-ingest` on **matches** (default), **all** listings, or a department slice.
    - **STOP.** Do **not** invoke `jobs-ingest`, rebuild the corpus, or resume a job search in the same turn.

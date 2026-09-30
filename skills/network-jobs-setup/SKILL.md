@@ -1,6 +1,6 @@
 ---
 name: network-jobs-setup
-description: First-run setup for the local Network Jobs suite. Use when installing network jobs, importing a résumé into profile, running the job-search preferences interview (location, remote/hybrid/onsite), filling profile.json, verifying ~/.network-jobs, or helping export LinkedIn connections.
+description: First-run setup for the local Network Jobs suite. Use when installing network jobs, importing a resume into profile, running the job-search preferences interview (location, remote/hybrid/onsite), filling profile.json, verifying ~/.network-jobs, or helping export LinkedIn connections.
 license: MIT
 metadata:
   version: "1.1.0"
@@ -28,25 +28,25 @@ Always read [SCHEMA.md](../../SCHEMA.md) first.
      or `network-jobs setup --agent auto` / `network-jobs doctor`.
    - Confirm dirs exist: `connections/`, `companies/`, `triage/`, `corpus/`, `config/`, `logs/`, `resume/`.
 
-2. **Résumé → profile** (preferred before prefs interview)
-   - If the user has a résumé path: run  
+2. **Resume → profile** (preferred before prefs interview)
+   - If the user has a resume path: run  
      `network-jobs profile import <path>`  
      or [`helpers/import-resume.sh`](helpers/import-resume.sh).
    - Read `$DATA/resume/text.md` when present (else `resume/source.*`).
    - Propose updates to `profile.json`: `name`, `email`, `title`, `company`, `url`.
-   - **Do not invent an email.** Only use an address found in the résumé or confirmed by the user.
+   - **Do not invent an email.** Only use an address found in the resume or confirmed by the user.
    - If `profile.json` already has values, show a diff and ask before overwrite.
    - Write `~/.network-jobs/profile.json` after confirmation.
 
-   If there is no résumé yet, ask for name/email/title manually (same fields).
+   If there is no resume yet, ask for name/email/title manually (same fields).
 
 3. **Preferences interview** (after background is known — **dynamic**)
-   Run a short interview **grounded in the résumé/profile**. This is not a fixed form.
+   Run a short interview **grounded in the resume/profile**. This is not a fixed form.
 
    **How to run it**
-   1. Skim résumé + current `profile.json`. Note likely track (IC vs manager), domains, seniority signals, recent employers, and gaps.
+   1. Skim resume + current `profile.json`. Note likely track (IC vs manager), domains, seniority signals, recent employers, and gaps.
    2. Propose a **draft prefs summary** from what you already know (“Sounds like senior IC product in fintech/devtools, NYC-leaning…”).
-   3. Ask **only the open questions** — skip anything the résumé already settles.
+   3. Ask **only the open questions** — skip anything the resume already settles.
    4. Branch: if they were a manager, ask whether they want to stay on a people-manager track, return to IC, or either; if lifelong IC, ask whether they’re open to managing. Same idea for domain switches, founding vs bigco, etc.
    5. Write `$DATA/preferences.json` (SCHEMA). Set `interviewComplete: true` and `updatedAt`. Extra keys OK when useful.
 
@@ -56,7 +56,7 @@ Always read [SCHEMA.md](../../SCHEMA.md) first.
    |-----------|----------|
    | Work mode | remote / hybrid / onsite — and if hybrid/onsite, **where** (never “any office”) |
    | Location | cities → map to a corpus location bucket (`nyc`, `sf`, `la`, `seattle`, `austin`, `boston`, `chicago`, `denver`, `dc`, `remote`, `other`) when clear; fill `onsiteLocations` for in-person willingness |
-   | Role category | from the 15 corpus categories, biased by résumé — then **confirm** (see below) |
+   | Role category | from the 15 corpus categories, biased by resume — then **confirm** (see below) |
    | Seniority | senior / mid |
    | Track | `ic` / `manager` / `either` |
    | Company shape | stage, size, industry (from their history + desires) |
@@ -66,25 +66,40 @@ Always read [SCHEMA.md](../../SCHEMA.md) first.
 
    **Dynamic follow-ups** (pick what fits *this* person):
    - IC ↔ manager trajectory
-   - Stay in current domain vs pivot (use résumé industries)
+   - Stay in current domain vs pivot (use resume industries)
    - Startup vs scale-up vs public
    - Individual contributor craft depth vs broader GM/ops
-    - **Confirm categories — affinity widens silently.** Propose the résumé-derived
+    - **Confirm categories — affinity widens silently.** Propose the resume-derived
       set, then read it back for confirmation. Warn that each category also
       accepts its affinity neighbors (e.g. `product` also accepts `engineering`,
       `data`, `design`, `operations` — see `CATEGORY_AFFINITY`), so extra
       categories widen the net in directions the user never named. Ask what to
       drop, not just what to add.
     - **Always ask deal-breakers explicitly.** Propose candidates from the
-      résumé's anti-signals (domains/roles they have never touched, levels they
+      resume's anti-signals (domains/roles they have never touched, levels they
       aged out of), then ask directly — including "none". An empty
       `dealBreakers` with no confirmation reads as "never asked", and
       `match-prefs` will warn on it. Set `dealBreakersConfirmed: true` once
       asked, even when the answer is none.
-    - **Former employers** — LinkedIn graphs are dense with connections at places they used to work. From the résumé, list past employers into `formerEmployers`, then ask whether to **include**, **exclude**, or **ask each time** (`formerEmployerPolicy`). Default suggestion: exclude unless they say otherwise.
+    - **Former employers** — LinkedIn graphs are dense with connections at places they used to work. From the resume, list past employers into `formerEmployers`, then ask whether to **include**, **exclude**, or **ask each time** (`formerEmployerPolicy`). Default suggestion: exclude unless they say otherwise.
    - **Onsite scope** — if they want remote *and* are open to onsite/hybrid, ask *which cities/metros* count. Write those to `onsiteLocations` (and matching buckets). Do not interpret “I’ll consider onsite” as every onsite role globally.
-   - Travel, visa/work auth, commute limits — only if relevant
-   - Anything the résumé makes surprising (“you’ve been EM for 5 years — still want that?”)
+    - **Trajectory / domain / shape** (the positive side — résumé can't supply
+      it): where they're moving *toward* (not just from), domain leanings
+      within the category (payments, devtools, enterprise…), and role shape
+      (0→1, platform, GTM-adjacent). Record 2–3 sentences in `notes` for
+      narrative use (fit brief, intros) — these are not scored buckets, so
+      keep them out of the structured fields.
+    - **Trajectory / domain / shape** (the positive side — the resume can't
+      supply it): where they're moving *toward* (not just from), domain
+      leanings within the category (payments, devtools, enterprise…), and
+      role shape (0→1, platform, GTM-adjacent). Record 2–3 sentences in
+      `notes` for narrative use (fit brief, intros) — these are not scored
+      buckets, so keep them out of the structured fields. Also reconcile
+      `targetRoles` with `track` aloud (a VP-seeking `either` still sees
+      Staff IC seats — confirm that's intended) rather than letting them
+      contradict silently.
+    - Travel, visa/work auth, commute limits — only if relevant
+   - Anything the resume makes surprising (“you’ve been EM for 5 years — still want that?”)
 
    Do **not** ask every dimension every time. Prefer 3–6 tight questions, then confirm the written prefs.
 
@@ -107,7 +122,7 @@ Always read [SCHEMA.md](../../SCHEMA.md) first.
    - Pipeline: import → careers-discover (stages only) → you confirm → jobs-ingest → search → warm intro.
    - Discovery benefits from a stronger model; local search / intros are fine on a mid-tier model.
    - After discover finishes, review triage/ — do not ingest until you say so.
-   - Résumé: network-jobs profile import ~/path/to/resume.pdf
+   - Resume: network-jobs profile import ~/path/to/resume.pdf
    - Prefs: re-run this setup skill anytime (“update my job search preferences”).
    - Refresh: network-jobs update · Health: network-jobs doctor
    - Wipe jobs only: network-jobs corpus clear --yes
@@ -128,7 +143,7 @@ command -v network-jobs || echo "network-jobs CLI missing — re-run setup"
 
 ## Non-negotiables
 
-- Never send profile, résumé, or connections to a remote API.
+- Never send profile, resume, or connections to a remote API.
 - Never create a hosted account or fetch a remote job export; this suite is local-only.
 - Do not name a specific model vendor when giving tips — stay model-agnostic.
-- Preferences interview comes **after** résumé/background when possible so questions are grounded.
+- Preferences interview comes **after** resume/background when possible so questions are grounded.

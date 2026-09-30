@@ -226,7 +226,7 @@ footer .end { margin-left: auto; font-family: var(--mono); font-size: .72rem; }
   <div class="wrap">
     <a class="brand" href="#top"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="4" cy="11" r="2.4" fill="#c8f04b"/><circle cx="11" cy="5" r="2.4" fill="#5eead4"/><circle cx="11" cy="17" r="2.4" fill="#5eead4"/><circle cx="18" cy="11" r="2.4" fill="#a78bfa"/><path d="M6 10l3-3.6M6 12l3 3.6M13 6.4l3 3.2M13 15.6l3-3.2" stroke="#9aa5c4" stroke-width="1.2"/></svg>network-jobs</a>
     <div class="navlinks"><a href="#flow">flow</a><a href="#mods">skills</a><a href="#live">replay</a><a href="#cli">cli</a><a href="#faq">faq</a></div>
-    <span class="pill">v1.5.0 · MIT</span>
+    <span class="pill">v1.6.0 · MIT</span>
   </div>
 </nav>
 
@@ -255,7 +255,7 @@ footer .end { margin-left: auto; font-family: var(--mono); font-size: .72rem; }
     <div class="setup2 rv">
       <span class="step-tag">recommended · paste into any agent</span>
       <p class="s2sub">One prompt carries the whole setup — install check included. Nothing to install first.</p>
-      <div><button class="copyprompt" data-copy="Set up Network Jobs on this machine: if the network-jobs CLI isn't installed, run npm i -g @hirefrank/network-jobs@latest then network-jobs setup --agent auto. Then follow https://github.com/hirefrank/network-jobs/blob/main/skills/network-jobs-setup/SKILL.md — ask me for my résumé and LinkedIn Connections export, import both, and run the preferences interview.">Copy setup prompt</button></div>
+      <div><button class="copyprompt" data-copy="Set up Network Jobs on this machine: if the network-jobs CLI isn't installed, run npm i -g @hirefrank/network-jobs@latest then network-jobs setup --agent auto. Then follow https://github.com/hirefrank/network-jobs/blob/main/skills/network-jobs-setup/SKILL.md — ask me for my resume and LinkedIn Connections export, import both, and run the preferences interview.">Copy setup prompt</button></div>
       <p class="s2note">Your agent installs the CLI, links the skills, and walks the rest with you — profile, preferences, imports. Two minutes, once.</p>
     </div>
   </div>
@@ -269,7 +269,7 @@ footer .end { margin-left: auto; font-family: var(--mono); font-size: .72rem; }
   <section id="flow">
     <div class="shead"><span class="k">// 01 — the flow</span><h2>Five nodes, one rule.</h2></div>
     <div class="chain">
-      <div class="node rv"><div class="n">NODE 01</div><h3>Résumé → profile</h3><code>setup</code><span class="apath">→ profile.json · preferences.json</span><p>Prefs interview grounded in your background.</p></div>
+      <div class="node rv"><div class="n">NODE 01</div><h3>Resume → profile</h3><code>setup</code><span class="apath">→ profile.json · preferences.json</span><p>Prefs interview grounded in your background.</p></div>
       <div class="node rv"><div class="n">NODE 02</div><h3>ZIP → graph</h3><code>import</code><span class="apath">→ companies.json · 87 companies</span><p>Free export becomes a graph, locally.</p></div>
       <div class="node rv"><div class="n">NODE 03</div><h3>Discover → triage</h3><code>discover</code><span class="apath">→ triage/careers-*/ · review me</span><p>Career pages staged for review. Always.</p></div>
       <div class="node rv"><div class="n">NODE 04</div><h3>Confirm → ingest</h3><code>ingest</code><span class="apath">→ corpus/ · totalJobs 5</span><p>Your word turns listings into corpus.</p></div>
@@ -281,7 +281,7 @@ footer .end { margin-left: auto; font-family: var(--mono); font-size: .72rem; }
   <section id="mods">
     <div class="shead"><span class="k">// 02 — modules</span><h2>Six skills, one loop.</h2></div>
     <div class="mods">
-      <div class="mod rv"><div class="port">in · profile</div><h3>network-jobs-setup</h3><p>Résumé → profile + preferences interview: location, remote/hybrid, IC vs manager, former employers.</p></div>
+      <div class="mod rv"><div class="port">in · profile</div><h3>network-jobs-setup</h3><p>Resume → profile + preferences interview: location, remote/hybrid, IC vs manager, former employers.</p></div>
       <div class="mod rv"><div class="port">in · graph</div><h3>network-jobs-import</h3><p>Connections ZIP → local company graph. No PII leaves the machine.</p></div>
       <div class="mod rv"><div class="port">out · triage</div><h3>careers-discover</h3><p>Model-driven career pages, JS boards via agent-browser. Stages, never ingests.</p></div>
       <div class="mod rv"><div class="port">in · corpus</div><h3>jobs-ingest</h3><p>Promotes a confirmed batch into searchable shards. Only on your word.</p></div>
@@ -322,7 +322,7 @@ agent: [intro] via Dan (ex-Stripe, 1st-degree) → Maya at Stripe. The agent dra
     <div class="ref rv">
       <div class="row"><span class="c">setup · update · doctor</span><span class="d">install skills · refresh suite · health check</span></div>
       <div class="row"><span class="c">import &lt;zip-or-csv&gt;</span><span class="d">LinkedIn connections → company graph</span></div>
-      <div class="row"><span class="c">profile import · show · clear</span><span class="d">résumé in, identity out (PDF / DOCX / MD / TXT)</span></div>
+      <div class="row"><span class="c">profile import · show · clear</span><span class="d">resume in, identity out (PDF / DOCX / MD / TXT)</span></div>
       <div class="row"><span class="c">search · intros · companies</span><span class="d">ranked roles · forwarders · graph stats</span></div>
       <div class="row"><span class="c">refresh · demo · embed-setup</span><span class="d">re-crawl · synthetic demo · semantic search</span></div>
       <div class="row"><span class="c">corpus clear · reset · uninstall</span><span class="d">wipe jobs · unlink skills · full remove</span></div>
@@ -332,7 +332,7 @@ agent: [intro] via Dan (ex-Stripe, 1st-degree) → Maya at Stripe. The agent dra
   <section id="local">
     <div class="shead"><span class="k">// 05 — guarantees</span><h2>Local-first, for real.</h2></div>
     <div class="duo">
-      <div class="fact rv"><h3><span class="tick">✓</span>No cloud account</h3><p>Everything in <code>~/.network-jobs/</code> — connections, corpus, profile, prefs, résumé. No hosted API exists.</p></div>
+      <div class="fact rv"><h3><span class="tick">✓</span>No cloud account</h3><p>Everything in <code>~/.network-jobs/</code> — connections, corpus, profile, prefs, resume. No hosted API exists.</p></div>
       <div class="fact rv"><h3><span class="tick">✓</span>Your data stays home</h3><p>Skills read local files. The only network calls are public career pages.</p></div>
       <div class="fact rv"><h3><span class="tick">✓</span>Model-agnostic</h3><p>Stronger models discover better; mid-tier is plenty for search and intros.</p></div>
       <div class="fact rv"><h3><span class="tick">✓</span>Free &amp; MIT</h3><p>Open source, local-free. Only your own agent's tokens cost anything.</p></div>
@@ -341,7 +341,7 @@ agent: [intro] via Dan (ex-Stripe, 1st-degree) → Maya at Stripe. The agent dra
 
   <section id="faq">
     <div class="shead"><span class="k">// 06 — faq</span><h2>Asked often.</h2></div>
-    <details class="rv" open><summary><span class="pm">+</span>Does anything get uploaded anywhere?</summary><div>No. Profile, résumé, and connections live in <code>~/.network-jobs/</code> and are never sent to a remote API.</div></details>
+    <details class="rv" open><summary><span class="pm">+</span>Does anything get uploaded anywhere?</summary><div>No. Profile, resume, and connections live in <code>~/.network-jobs/</code> and are never sent to a remote API.</div></details>
     <details class="rv"><summary><span class="pm">+</span>Which agents work?</summary><div>Any agent that can read a skill file and run a local command — Claude Code, Cursor, Codex, OpenCode, Muse, Pi, Gemini CLI, Hermes, Grok Bot, and others. <code>setup --agent auto</code> links everything it detects, Muse included via the shared <code>~/.agents/skills</code>.</div></details>
     <details class="rv"><summary><span class="pm">+</span>Does it suit long-running agents?</summary><div>That's what local files are for. Triage batches, corpus shards, and <code>manifest.json</code> persist between runs, so a background agent — Muse's persistent agents, say — resumes exactly where it left off. Nothing lives in a cloud queue that can time out.</div></details>
     <details class="rv"><summary><span class="pm">+</span>Do I need LinkedIn Premium?</summary><div>No. Free export: Settings → Data privacy → Get a copy of your data → Connections only. Then <code>network-jobs import ~/Downloads/Connections.zip</code>.</div></details>

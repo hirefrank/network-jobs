@@ -54,11 +54,11 @@ Default: `~/.network-jobs/` (override with `NETWORK_JOBS_HOME`).
 }
 ```
 
-Used by `network-jobs` (search header + intro footer) and `intro-email-generator` (job seeker identity when drafting). Prefer filling from a résumé via `network-jobs profile import` + the setup skill — do not invent email.
+Used by `network-jobs` (search header + intro footer) and `intro-email-generator` (job seeker identity when drafting). Prefer filling from a resume via `network-jobs profile import` + the setup skill — do not invent email.
 
 ## preferences.json
 
-Search and discovery defaults from a **résumé-grounded** agent interview (not a fixed questionnaire). Ask only what the background leaves open; skip what the résumé already answers clearly.
+Search and discovery defaults from a **resume-grounded** agent interview (not a fixed questionnaire). Ask only what the background leaves open; skip what the resume already answers clearly.
 
 ```json
 {
@@ -90,15 +90,16 @@ Search and discovery defaults from a **résumé-grounded** agent interview (not 
 | `locations` | Free-text places the user cares about (display / soft filter) |
 | `onsiteLocations` | Where onsite/hybrid is acceptable. **Required whenever `workModes` includes `hybrid` or `onsite`.** Never treat “open to onsite” as every office worldwide — scope it to these places (and matching `locationBuckets`). |
 | `categories` | Preferred role categories (same 15 as corpus) |
-| `seniority` | `senior` and/or `mid` — a soft scoring signal, never a veto (match +3, mismatch −2, unmarked titles neutral); only `intern`/`junior` signals hard-fail |
+| `seniority` | `senior` and/or `mid` — a soft scoring signal, never a veto (match +3, mismatch −2, level-ambiguous −1); only `intern`/`junior` signals hard-fail |
 | `track` | `ic` \| `manager` \| `either` (individual contributor vs people manager) |
 | `companyStages` | Free-form tags the user cares about (e.g. `seed`, `series-a`, `growth`, `public`) |
 | `companySizes` | Optional size bands the user stated (free-form) |
-| `industries` | Domains from résumé + interview (free-form) |
-| `formerEmployers` | Company names from the résumé (past employers); used with `formerEmployerPolicy` |
+| `industries` | Domains from resume + interview (free-form) |
+| `formerEmployers` | Company names from the resume (past employers); used with `formerEmployerPolicy` |
 | `formerEmployerPolicy` | `include` — allow roles there · `exclude` — skip them in discover/search defaults · `ask` — confirm per company when they appear |
 | `salaryMin` | Annual USD floor, or `null` if undisclosed / no floor |
-| `mustHaves` | Short soft requirements |
+| `mustHaves` | Aspirational requirements, matched AND-set over title + department + company + description (+2, reason `mustHave`); stated-but-unmatched on a described role records `mustHave-unmet` (visible, no penalty) |
+| `targetRoles` | Role-shape slugs (`vp-product`, `head-of-product`) matched token-wise against title + department (+3, reason `targetRole`); aspirational bonus only, never a veto |
 | `dealBreakers` | Short exclusions |
 | `dealBreakersConfirmed` | `true` once the interview explicitly asked for deal-breakers (even when the answer is none). An empty `dealBreakers` *without* this flag means "never asked" — `match-prefs` warns on it, because unasked filters silently widen the shortlist. |
 | `notes` | Catch-all soft constraints |
@@ -193,6 +194,14 @@ Raw extracted openings (pre-normalization):
 
 `locations` is optional (one posting, many offices). `externalId` is the ATS/board id when the JSON exposes one — used for fingerprinting, never invented.
 
+`description` is optional free text (JD body, truncated to ~10k chars, plus
+`descriptionFetchedAt` / `descriptionSource`). Filled by
+`fetch-descriptions.py` for matches only — listings without one are
+title-only, and title-only rows score structurally weaker (no requirement
+text for mustHaves matching, no body for embeddings or fit briefs) rather
+than incidentally weaker. `department` is filled from the ATS payload when
+the board provides one and the row lacks it.
+
 ### index/pagination.json
 
 Written by `careers-discover/helpers/paginate-listings.py` when a jobs JSON/API is followed (page / cursor / offset). Cap `maxPages` (default 15). ATS-agnostic — no adapter matrix.
@@ -211,7 +220,7 @@ Also copied into the INVENTORY `Pagination:` line. **`complete` is false** when 
 
 ### index/matches.json
 
-Written by `careers-discover/helpers/match-prefs.py` after extract. Score listings against `preferences.json` (+ résumé keywords when present). **Confirm matches by default** at ingest time; the user can still say “ingest all” (`listings.json`) or a department slice.
+Written by `careers-discover/helpers/match-prefs.py` after extract. Score listings against `preferences.json` (+ resume keywords when present). **Confirm matches by default** at ingest time; the user can still say “ingest all” (`listings.json`) or a department slice.
 
 ```json
 {
@@ -286,6 +295,8 @@ Verbatim capture of each fetch/browser snapshot **before** presenting results to
 
 Salary is `{ "min", "max" }` in annual USD with optional `"currency"` (default USD) and optional `"unit": "hourly"` — hourly rates are flagged, never annualized. String salaries (`"$150k–$180k"`, `"up to $200k"`, `"$75/hr"`) are parsed at ingest (`lib/network_jobs/salary.py`); dict salaries pass through. `postedAt` is canonicalized to `YYYY-MM-DD` at ingest when the ATS format parses, otherwise kept raw.
 
+`description` (optional free text, JD body truncated to ~10k chars, with `descriptionFetchedAt` / `descriptionSource`) rides through classify, merge, and shards untouched. mustHaves matches against it; embeddings include it when present. Rows without one are title-only and score structurally weaker — not incidentally, but because there are no requirements to match against.
+
 Identity is **`fingerprint`**, not URL: `id:{company}:{atsId}` when `externalId` is known, otherwise `fp:{company}:{sha1(title+locations)}`. Placeholder ATS ids (`null`, `n/a`, `unknown`, `tbd`, `-`, plus prose label-leaks like `See Opening ID`) are treated as absent so distinct jobs never collide on a shared placeholder. The full set lives in `PLACEHOLDER_ATS_IDS` (`lib/network_jobs/fingerprint.py`). Rebuild merges on fingerprint: incoming wins, but `firstSeen` is preserved, `lastSeen` is inherited from the previous record when the incoming batch lacks it (a batch without `lastSeen` is not evidence the job was seen today), and a previous `postedAt` is kept when incoming lacks one. `status` is `open` | `closed`. Closed jobs stay in `jobs-all.json` but are omitted from searchable shards.
 
 **Expiry / close:** when ingesting a company, unseen open jobs for that company are marked `closed` **only if** triage `pagination.complete` is true. Incomplete crawls (truncated, cap hit, missing next page) must not expire anything.
@@ -294,7 +305,7 @@ Identity is **`fingerprint`**, not URL: `id:{company}:{atsId}` when `externalId`
 
 `engineering` | `product` | `design` | `data` | `ai-ml` | `sales` | `marketing` | `customer-success` | `operations` | `finance` | `people` | `legal` | `it-security` | `retail` | `other`
 
-Adjacent categories count as a soft match via `CATEGORY_AFFINITY` (`lib/network_jobs/classify.py`): when a seeker prefers `engineering` but the job is classified `ai-ml` or `data`, scoring adds +2 with reason `category-affinity` instead of the +5 `category` exact match — and, unlike an unrelated category, never hard-fails the job. Affinity is directional (seeker preference → acceptable job category), e.g. a `marketing` seeker accepts `product` roles but a `product` seeker does not get `marketing` roles boosted.
+Adjacent categories count as a soft match via `CATEGORY_AFFINITY` (`lib/network_jobs/classify.py`): when a seeker prefers `engineering` but the job is classified `ai-ml` or `data`, scoring adds +2 with reason `category-affinity` instead of the +5 `category` exact match — and, unlike an unrelated category, never hard-fails the job. The bonus requires a high-confidence classification; low-confidence guesses record `category-unconfirmed` with no bonus. Affinity is directional (seeker preference → acceptable job category), e.g. a `marketing` seeker accepts `product` roles but a `product` seeker does not get `marketing` roles boosted.
 
 ### Location buckets
 
@@ -323,7 +334,7 @@ Keep `senior` / `mid` shards as the fast path.
 | `senior` | Senior, Staff, Principal, Lead, Director, VP, Head of, **high-confidence people-manager titles** (`Engineering Manager`, `Director of Engineering`, …) |
 | `mid` | Everything else (including internships, junior titles, and level-ambiguous titles) |
 
-Additional **`senioritySignals`** on the job object: `intern`, `junior`, `unmarked`, `staff+`, `manager`. Seniority is a soft scoring signal, never an exclusion: a seniority match scores +3, a level-ambiguous title (no seniority markers, e.g. plain "Product Manager") scores neutral, any other mismatch scores −2. Only positive junior signals (`intern`, `junior`) hard-fail against non-junior prefs. Interns stay in `mid`; Staff/Principal stay in `senior` plus `staff+`. High-confidence people-manager titles (track `manager`, confidence `high`) land in `senior` with the `manager` signal — generic "X Manager" titles (`Escalations Manager`, `Sourcing Manager`) and IC-flavored "manager" titles (`Account Manager`, `Program Manager`) stay `mid` and are not promoted.
+Additional **`senioritySignals`** on the job object: `intern`, `junior`, `unmarked`, `staff+`, `manager`. Seniority is a soft scoring signal, never an exclusion: a seniority match scores +3, any other mismatch scores −2, and a level-ambiguous title (no seniority markers, e.g. plain "Product Manager") scores −1 with reason `seniority-ambiguous` — unknown level must not rank like a confirmed match. Only positive junior signals (`intern`, `junior`) hard-fail against non-junior prefs. Interns stay in `mid`; Staff/Principal stay in `senior` plus `staff+`. High-confidence people-manager titles (track `manager`, confidence `high`) land in `senior` with the `manager` signal — generic "X Manager" titles (`Escalations Manager`, `Sourcing Manager`) and IC-flavored "manager" titles (`Account Manager`, `Program Manager`) stay `mid` and are not promoted.
 
 `track` is persisted on the job (`ic` | `manager`) by the classifier.
 
@@ -366,7 +377,7 @@ Additional **`senioritySignals`** on the job object: `intern`, `junior`, `unmark
 | `network-jobs` | `corpus/`, `profile.json`, `preferences.json`, `resume/` | `search/ranked.json` |
 | `intro-email-generator` | `profile.json`, `resume/text.md`, `connections.json`, `search/intros.json` | `search/intros.json` |
 
-CLI helpers: `network-jobs profile import <file>` stores the résumé; `network-jobs profile show` prints profile + prefs + resume status.
+CLI helpers: `network-jobs profile import <file>` stores the resume; `network-jobs profile show` prints profile + prefs + resume status.
 
 Search ranker: `skills/network-jobs/helpers/rank-jobs.py` writes `search/ranked.json` (`showing: "K of N"`). The search skill reads that file — it does not dump whole shards into context.
 
@@ -412,7 +423,7 @@ all jobs when the model/recipe changes.
 
 Scoring effects (all soft signals; nothing is a veto):
 
-- `resume-semantic` — cosine(résumé, job) mapped to +0–4, **replaces** the
+- `resume-semantic` — cosine(resume, job) mapped to +0–4, **replaces** the
   keyword `resume` bonus (never stacks with it).
 - `query-semantic` — cosine(`--query`, job) mapped to +0–2, **additive** to the
   lexical `query` hits.

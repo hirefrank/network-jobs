@@ -45,7 +45,7 @@ Commands:
   search [--query "..."] [-k N] [--company-cap N] [--include-stale] [--json]
       Rank the corpus against your prefs and print matching jobs
 
-  intros [--k-roles N] [--k-forwarders N] [--title T] [--url U] [--company C]
+  intros [--k-roles N] [--k-forwarders N] [--title T] [--url U] [--company C] [--prefer NAME]
       Pick 1-2 roles from the last search + 1-2 forwarders each
       from your connections (writes search/intros.json).
       Flags target reviewed roles instead of the search tail.
@@ -73,13 +73,13 @@ Commands:
       semantic resume<->job similarity in search/rank
 
   profile import <resume-file>
-      Store résumé under ~/.network-jobs/resume/ (feeds profile + interview)
+      Store resume under ~/.network-jobs/resume/ (feeds profile + interview)
 
   profile show
-      Print profile, preferences, and résumé status
+      Print profile, preferences, and resume status
 
   profile clear [--resume] [--yes]
-      Reset profile + preferences (optional résumé wipe); keeps corpus/graph
+      Reset profile + preferences (optional resume wipe); keeps corpus/graph
 
   corpus clear [--triage] [--yes]
       Empty the searchable corpus (keeps profile + connections); optional triage wipe
@@ -187,7 +187,7 @@ Usage: network-jobs report [options]
 Assemble a sanitized diagnostic bundle (versions, doctor output, data
 counts, preferences/profile key names only, latest import summary, one
 triage INVENTORY) and file it as a GitHub issue. Values that identify
-you — profile fields, résumé text, connection rows — are never included;
+you — profile fields, resume text, connection rows — are never included;
 key names only. Review the exact body with --dry-run first.
 
 Options:
@@ -229,7 +229,7 @@ usage_search() {
   cat <<'EOF'
 Usage: network-jobs search [--query "..."] [-k N] [--include-stale] [--json] [-v]
 
-Rank the corpus against preferences.json (+ résumé keywords) and print the
+Rank the corpus against preferences.json (+ resume keywords) and print the
 top matches. Also writes ~/.network-jobs/search/ranked.json for follow-on
 steps like rank-intros.
 
@@ -239,7 +239,7 @@ Options:
   --company-cap N Max jobs per company in the shortlist (default: 3, 0 = no cap)
   --include-stale Also show stale postings (posted >90d ago, hidden by default)
   --json          Print the ranked.json payload instead of a human list
-  -v, --verbose   Append a fit brief per role (reasons, résumé hits,
+  -v, --verbose   Append a fit brief per role (reasons, resume hits,
                   connection warmth, gaps). Default output is unchanged.
   --help, -h      Show this help
 
@@ -251,11 +251,14 @@ EOF
 
 usage_intros() {
   cat <<'EOF'
-Usage: network-jobs intros [--k-roles N] [--k-forwarders N] [--title T] [--url U] [--company C]
+Usage: network-jobs intros [--k-roles N] [--k-forwarders N] [--title T] [--url U] [--company C] [--prefer NAME]
 
 Pick up to N roles from the last `network-jobs search` (search/ranked.json)
 and up to N forwarders per role from your connections. Writes
 ~/.network-jobs/search/intros.json for the intro-email-generator skill.
+
+Forwarder order measures title overlap only — never relationship strength.
+Ask who the user actually knows well and pin them with --prefer.
 
 Options:
   --k-roles N       Max roles to keep (default: 2)
@@ -263,6 +266,7 @@ Options:
   --title TEXT      Only roles whose title contains this text
   --url TEXT        Only roles whose url contains this text
   --company NAME    Only roles at this company (normalized match)
+  --prefer NAME     Pin a person to the top of forwarders by name (repeatable)
   --help, -h        Show this help
 
 With --title/--url/--company, intros targets reviewed roles instead of the
@@ -408,19 +412,19 @@ Usage: network-jobs profile import <resume-file>
        network-jobs profile show
        network-jobs profile clear [--resume] [--yes]
 
-import  Copy a résumé into ~/.network-jobs/resume/, extract text when possible
+import  Copy a resume into ~/.network-jobs/resume/, extract text when possible
         (txt/md, pdf via pdftotext, docx via python). Does not overwrite
-        profile.json by itself — ask your agent to fill profile from the résumé,
+        profile.json by itself — ask your agent to fill profile from the resume,
         then run the preferences interview (location, remote/hybrid/onsite, …).
 
-show    Print profile.json, preferences.json, and résumé file status.
+show    Print profile.json, preferences.json, and resume file status.
 
 clear   Reset identity prefs: empty profile.json and delete preferences.json.
         Does **not** touch corpus, connections, or companies.
         Pass --resume to also delete ~/.network-jobs/resume/.
 
 Options:
-  --resume     Also remove stored résumé files (with clear)
+  --resume     Also remove stored resume files (with clear)
   --yes, -y    Skip confirmation (clear only)
   --help, -h   Show this help
 
@@ -436,7 +440,7 @@ usage_corpus() {
   cat <<'EOF'
 Usage: network-jobs corpus clear [--triage] [--yes]
 Empty the searchable job corpus under ~/.network-jobs/corpus/ while keeping
-profile, connections, companies, config, preferences, and résumé.
+profile, connections, companies, config, preferences, and resume.
 
 Options:
   --triage     Also delete staged careers-* folders under triage/
@@ -830,7 +834,7 @@ cmd_doctor() {
   if [[ -f "$DATA_HOME/resume/text.md" ]] || compgen -G "$DATA_HOME/resume/source.*" >/dev/null 2>&1; then
     echo "OK  resume under $DATA_HOME/resume"
   else
-    echo "TIP  no résumé yet — network-jobs profile import ~/path/to/resume.pdf"
+    echo "TIP  no resume yet — network-jobs profile import ~/path/to/resume.pdf"
   fi
 
   if [[ -f "$DATA_HOME/companies/companies.json" ]]; then

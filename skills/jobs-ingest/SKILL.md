@@ -40,6 +40,7 @@ python3 "$SUITE/skills/jobs-ingest/helpers/classify-listings.py" \
 ```
 
    Persist `category`, `track`, `seniority`, `senioritySignals` (`intern` / `staff+`), parsed `locations[]`, `locationBuckets` (hybrid NYC-or-Remote hits both), and `fingerprint`.
+   Keep any `description` / `department` the triage rows already carry — they ride through classify, merge, and shards untouched.
    **LLM only for `needsLlm` titles** (ambiguous lead/head/player-coach). Leave high-confidence rows alone.
    Fill `companyDomain` from the graph when known. Keep `salary` / `postedAt` only if present in triage.
 5. **Merge** into corpus via helper (required):

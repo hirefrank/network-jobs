@@ -724,6 +724,31 @@ class CrawlAndIntroTests(unittest.TestCase):
         self.assertEqual(len(got), 1)
         self.assertEqual(filter_jobs(jobs, title="nope"), [])
 
+    def test_prefer_pins_person_regardless_of_score(self):
+        # #19: closeness comes from the user, not the scorer. A preferred
+        # name sorts first even with a lower title-overlap score.
+        from network_jobs.intros import rank_intros
+
+        job = {"title": "Senior Product Manager", "company": "Stripe",
+               "url": "https://stripe.com/j/1", "matchScore": 20,
+               "status": "open"}
+        people = [
+            {"name": "Stranger Zee", "position": "Senior Product Manager",
+             "company": "Stripe", "url": "", "email": "",
+             "connectedOn": "2024-06-01"},
+            {"name": "Good Friend", "position": "Janitor",
+             "company": "Stripe", "url": "", "email": "",
+             "connectedOn": "2016-03-01"},
+        ]
+        plain = rank_intros([job], people)
+        self.assertEqual(plain["roles"][0]["forwarders"][0]["name"],
+                         "Stranger Zee")
+        pinned = rank_intros([job], people, prefer=["good friend"])
+        self.assertEqual(pinned["roles"][0]["forwarders"][0]["name"],
+                         "Good Friend")
+        self.assertEqual(
+            pinned["roles"][0]["forwarders"][0]["connectedOn"], "2016-03-01")
+
     def test_rank_intros_filters_and_empty_errors(self):
         import argparse
         import io
@@ -805,6 +830,45 @@ class CrawlAndIntroTests(unittest.TestCase):
         self.assertIn("category", text)
         self.assertIn("warmth: 1 at Stripe", text)
         self.assertIn("Dan", text)
+        # #19: the top pick is labeled as a title match, never a tie.
+        self.assertIn("closest title match", text)
+        self.assertNotIn("best:", text)
+
+    def test_cli_stdout_has_no_accented_resume(self):
+        # #18: user-facing output stays ASCII "resume". Narrow guard on the
+        # reported class (é/è) — bullets and dashes elsewhere are intentional.
+        import io
+        from contextlib import redirect_stdout
+
+        from network_jobs import cli as cli_mod
+
+        out = io.StringIO()
+        with redirect_stdout(out):
+            for argv in (["--help"], ["search", "--help"],
+                         ["intros", "--help"], ["report", "--help"],
+                         ["review-matches", "--help"],
+                         ["build-pack", "--help"], ["fetch-pack", "--help"]):
+                try:
+                    cli_mod.main(argv)
+                except SystemExit:
+                    pass
+        text = out.getvalue()
+        self.assertNotIn("é", text)
+        self.assertNotIn("è", text)
+        self.assertNotIn("résumé", text.lower())
+
+    def test_verbose_flag_parses_after_subcommand(self):        # #17: helpers and bin append flags after the subcommand, where the
+        # top-level -v never reaches. Every subparser must accept it.
+        from network_jobs.cli import build_parser
+
+        for argv in (["search", "-v", "-k", "3"],
+                     ["match-prefs", "--triage-dir", "t", "-v"],
+                     ["review-matches", "--triage-dir", "t", "--verbose"],
+                     ["rank-intros", "--verbose"],
+                     ["rebuild", "b.json", "-v"]):
+            with self.subTest(argv=argv):
+                self.assertTrue(build_parser().parse_args(argv).verbose)
+        self.assertFalse(build_parser().parse_args(["search", "-k", "3"]).verbose)
 
     def test_listing_set_hash_skip_unchanged(self):
         from network_jobs.crawl import crawl_status, stamp_company_crawl
@@ -1212,7 +1276,190 @@ class CompaniesRefreshTests(unittest.TestCase):
         self.assertEqual([r["slug"] for r in results], ["acme"])
 
 
+class FetchDescriptionsTests(unittest.TestCase):
+    HTML = ("<html><head><title>Jobs</title><style>x{}</style></head><body>"
+            "<h1>Senior Product Manager, Payments</h1>"
+            "<p>Own payments infrastructure end to end. Partner deeply with "
+            "engineering on platform reliability and payments compliance across "
+            "our global money movement network serving millions of users.</p>"
+            "<script>track()</script></body></html>")
+
+    def _fetch(self, mapping):
+        def fetch(url):
+            if url not in mapping:
+                raise ConnectionError("unreachable")
+            status, ctype, body = mapping[url]
+            return status, ctype, body.encode()
+        return fetch
+
+    def test_strip_html_keeps_prose_drops_chrome(self):
+        from network_jobs.descriptions import strip_html
+
+        text = strip_html(self.HTML)
+        self.assertIn("Own payments infrastructure", text)
+        self.assertNotIn("track()", text)
+        self.assertNotIn("x{}", text)
+
+    def test_fetch_html_and_json_pages(self):
+        from network_jobs.descriptions import fetch_job_description
+
+        fetch = self._fetch({
+            "https://x/jobs/1": (200, "text/html", self.HTML),
+            "https://x/api/2": (200, "application/json", json.dumps({
+                "title": "PM",
+                "content": "Lead our " + "payments platform. " * 30,
+                "departments": [{"name": "Product"}],
+            })),
+            "https://x/gone": (404, "text/html", "nope"),
+        })
+        html = fetch_job_description("https://x/jobs/1", fetch=fetch)
+        self.assertIn("payments infrastructure", html["description"])
+        self.assertTrue(html["descriptionFetchedAt"])
+        js = fetch_job_description("https://x/api/2", fetch=fetch)
+        self.assertIn("payments platform", js["description"])
+        self.assertEqual(js["department"], "Product")
+        self.assertIn("error", fetch_job_description("https://x/gone", fetch=fetch))
+        self.assertIn("error", fetch_job_description("not a url", fetch=fetch))
+
+    def test_fetch_descriptions_writes_back_matches(self):
+        from network_jobs.descriptions import fetch_descriptions
+
+        tmp = Path(tempfile.mkdtemp(prefix="nj-desc-"))
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        index = tmp / "triage" / "t" / "index"
+        index.mkdir(parents=True)
+        (index / "matches.json").write_text(json.dumps([
+            {"title": "Senior PM", "url": "https://x/jobs/1"},
+            {"title": "No URL Job"},
+        ]))
+        result = fetch_descriptions(
+            tmp / "triage" / "t",
+            fetch=self._fetch({"https://x/jobs/1": (200, "text/html", self.HTML)}))
+        self.assertEqual(result["fetched"], 1)
+        self.assertEqual(result["failed"], 1)
+        rows = json.loads((index / "matches.json").read_text())
+        self.assertIn("payments infrastructure", rows[0]["description"])
+        self.assertNotIn("description", rows[1])
+
+    def test_must_haves_fire_on_description_not_title(self):
+        # #21: aspirational phrases are dead against title-only blobs;
+        # AND-set matching over requirements text makes them discriminate.
+        from network_jobs.prefs import must_have_hits
+
+        title_only = {"title": "Senior Product Manager", "department": "",
+                      "company": "Stripe"}
+        self.assertEqual(
+            must_have_hits(title_only, ["strong engineering partnership"]), [])
+        with_desc = dict(
+            title_only,
+            description="You will build a strong engineering partnership "
+                        "with platform teams.")
+        self.assertEqual(
+            must_have_hits(with_desc, ["strong engineering partnership"]),
+            ["strong engineering partnership"])
+        self.assertEqual(must_have_hits(title_only, ["platform"]), [])
+
+    def test_description_survives_classify_and_merge(self):
+        from network_jobs.classify import classify_job
+        from network_jobs.corpus import merge_jobs
+
+        job = {"title": "Senior PM", "company": "Acme", "location": "Remote",
+               "description": "Own payments infrastructure."}
+        classified = classify_job(job, company="Acme")
+        self.assertEqual(classified["description"], "Own payments infrastructure.")
+        merged, _ = merge_jobs([], [classified])
+        self.assertEqual(merged[0]["description"], "Own payments infrastructure.")
+
+    def test_fetched_department_upgrades_category(self):
+        # An explicit ATS department beats weak title-token guessing
+        # (classify already prefers it; the fetch step fills it in).
+        from network_jobs.classify import classify_job
+
+        bare = classify_job({"title": "Growth Catalyst",
+                             "department": "", "location": "NYC"})
+        self.assertEqual(bare["category"], "other")
+        filled = classify_job({"title": "Growth Catalyst",
+                               "department": "Product", "location": "NYC"})
+        self.assertEqual((filled["category"], filled["categoryConfidence"]),
+                         ("product", "high"))
+
+
 class ParseLocationsIdempotencyTests(unittest.TestCase):
+    def test_ambiguous_level_penalized_not_neutral(self):
+        # #23: unknown level must not score like a confirmed match.
+        from network_jobs.prefs import score_job
+
+        prefs = {"seniority": ["senior"]}
+        senior = score_job(
+            {"title": "Senior Engineer", "company": "Acme", "location": "Remote"},
+            prefs)
+        plain = score_job(
+            {"title": "Engineer", "company": "Acme", "location": "Remote"},
+            prefs)
+        self.assertTrue(senior["matched"] and plain["matched"])
+        self.assertIn("seniority-ambiguous", plain["matchReasons"])
+        self.assertEqual(
+            senior["matchScore"] - plain["matchScore"], 4)
+
+    def test_confirmed_outranks_ambiguous_at_equal_scores(self):
+        from network_jobs.prefs import match_sort_key, seniority_unconfirmed
+
+        confirmed = {"title": "B Role", "matchScore": 10,
+                     "matchReasons": ["seniority"]}
+        ambiguous = {"title": "A Role", "matchScore": 10,
+                     "matchReasons": ["seniority-ambiguous"]}
+        self.assertFalse(seniority_unconfirmed(confirmed))
+        self.assertTrue(seniority_unconfirmed(ambiguous))
+        self.assertEqual(
+            sorted([ambiguous, confirmed], key=match_sort_key),
+            [confirmed, ambiguous])
+        # No markers at all (no seniority prefs) counts as confirmed.
+        self.assertFalse(seniority_unconfirmed({"matchReasons": ["category"]}))
+
+    def test_musthave_unmet_recorded_without_penalty(self):
+        from network_jobs.prefs import score_job
+
+        prefs = {"mustHaves": ["platform reliability"]}
+        described = {"title": "Senior PM", "company": "Acme",
+                     "location": "Remote",
+                     "description": "Own payments infrastructure."}
+        out = score_job(described, prefs)
+        self.assertIn("mustHave-unmet", out["matchReasons"])
+        bare = {"title": "Senior PM", "company": "Acme", "location": "Remote"}
+        out_bare = score_job(bare, prefs)
+        self.assertNotIn("mustHave-unmet", out_bare["matchReasons"])
+        self.assertNotIn("mustHave", out_bare["matchReasons"])
+
+    def test_target_roles_bonus(self):
+        from network_jobs.prefs import score_job
+
+        prefs = {"targetRoles": ["vp-product", "head-of-product"]}
+        vp = score_job({"title": "VP Product", "company": "Acme",
+                        "location": "Remote"}, prefs)
+        self.assertIn("targetRole", vp["matchReasons"])
+        pm = score_job({"title": "Staff Engineer", "company": "Acme",
+                        "location": "Remote"}, prefs)
+        self.assertNotIn("targetRole", pm["matchReasons"])
+        self.assertGreater(
+            vp["matchScore"] - pm["matchScore"], 0)
+
+    def test_low_confidence_affinity_gets_no_bonus(self):
+        from network_jobs.prefs import score_job
+
+        prefs = {"categories": ["product"]}
+        out = score_job({"title": "Data Wizard", "company": "Acme",
+                         "location": "Remote"}, prefs)
+        self.assertIn("category-unconfirmed", out["matchReasons"])
+        self.assertNotIn("category-affinity", out["matchReasons"])
+
+    def test_ambiguous_count_reported(self):
+        from network_jobs.prefs import match_listings
+
+        result = match_listings(
+            [{"title": "Engineer", "company": "Acme", "location": "Remote"},
+             {"title": "Senior Engineer", "company": "Acme", "location": "Remote"}],
+            {"seniority": ["senior"]}, company="Acme")
+        self.assertEqual(result["ambiguousSeniority"], 1)
     def test_round_trip_does_not_duplicate(self):
         # #15: persisted locations[] re-parsed alongside location must not
         # double — dict and string branches share one dedup namespace now.

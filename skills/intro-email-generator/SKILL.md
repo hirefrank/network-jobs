@@ -55,7 +55,7 @@ cat "$DATA/profile.json"
 cat "$DATA/resume/text.md" 2>/dev/null || ls -la "$DATA/resume"
 ```
 
-If résumé is missing, ask the user to run `network-jobs profile import <file>` or paste text.
+If resume is missing, ask the user to run `network-jobs profile import <file>` or paste text.
 
 ## Email Structure
 
@@ -139,10 +139,32 @@ If the user found a job using the network-jobs skill:
   `--url ...` / `--company ...` (joins `search/ranked.json` + `connections/connections.json`).
   Bare `network-jobs intros` takes the tail of the last search — fine as a
   default, but ask first when the user has reviewed specific roles.
-- Confirm 1–2 roles and 1–2 forwarders with the user
+- Forwarder order measures **title overlap only, never relationship
+  strength** (every connection is 1st degree; closeness isn't in the data).
+  Ask who the user actually knows well at that company and pin them with
+  `intros --prefer "Name"` (repeatable) — never present the top scorer as
+  their closest tie.
+- Confirm 1–2 roles and 1–2 forwarders with the user, using the host's
+  structured question tool when one is available (not a prose list):
+  group first (family → specific role, or company → role), offer
+  multi-select where several answers are valid, put the deciding data in
+  the option labels (fit score, company, connection count) — never in
+  surrounding prose the user must correlate — and always keep a free-text
+  path for anything not listed. Prose satisfies the letter of "confirm"
+  but costs the user a summarization task; more than ~4 options must use
+  the picker.
 - Fetch JD **only** for `fetchJdUrls` (or skip and use `department`)
 - Job seeker name/email may be in ~/.network-jobs/profile.json
-- Generate the intro email using the job details + résumé
+- Generate the intro email using the job details + resume
+- After the exact text is approved, finish in-mail when possible: if the
+  host exposes a mail/compose capability (Gmail MCP, Outlook/Graph, or a
+  provider-agnostic compose tool), create a **draft** — `To` = forwarder's
+  address on file, subject + approved body, JD as a link. If the forwarder
+  has no email on file, do not guess one: report that no draft could be
+  addressed and fall back to text. **Never send** — draft only, always, and
+  only after the user approves the exact text. With no mail capability
+  available, emit the text plus a one-line note that it pastes into any
+  mail client.
 
 ## Helpers
 

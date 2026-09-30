@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from typing import Any
+import re
 
 from .classify import CATEGORY_AFFINITY, classify_job
 from .embeddings import (
@@ -18,11 +19,11 @@ from .text import former_employer_match, tokenize
 
 
 def name_tokens(profile: dict[str, Any] | None) -> set[str]:
-    """Tokens from the user's name, so résumé keywords don't echo "ada lovelace"."""
+    """Tokens from the user's name, so resume keywords don't echo "ada lovelace"."""
     return set(tokenize(str((profile or {}).get("name") or "")))
 
 
-#: Generic résumé filler that pollutes keyword extraction without describing the
+#: Generic resume filler that pollutes keyword extraction without describing the
 #: actual work. Kept deliberately small; STOPWORDS covers articles/prepositions.
 RESUME_NOISE = frozenset({
     "new", "novel", "various", "multiple", "many", "much", "several",
@@ -103,6 +104,30 @@ def _keyword_hit(text: str, phrases: list[str] | None) -> list[str]:
     return hits
 
 
+def must_have_hits(job: dict[str, Any], must_haves: list[str] | None) -> list[str]:
+    """Aspirational phrases need AND-set matching, not substring (#21).
+
+    Plain substring never fires on natural prose ("strong engineering
+    partnership" matches 0 of 30 titles), so mustHaves looked load-bearing
+    while doing nothing. Requiring every significant token present lets a
+    phrase match a description that actually discusses it. Matches against
+    title + department + company + description (when fetched).
+    """
+    if not must_haves:
+        return []
+    blob = " ".join([
+        str(job.get("title") or ""), str(job.get("department") or ""),
+        str(job.get("company") or ""), str(job.get("description") or ""),
+    ])
+    tokens = set(tokenize(blob.lower()))
+    hits = []
+    for phrase in must_haves:
+        toks = [t for t in tokenize(str(phrase).lower()) if len(t) > 2]
+        if toks and all(t in tokens for t in toks):
+            hits.append(phrase)
+    return hits
+
+
 def score_job(
     job: dict[str, Any],
     prefs: dict[str, Any] | None,
@@ -113,7 +138,7 @@ def score_job(
 ) -> dict[str, Any]:
     """Score one job against prefs.
 
-    resume_vector/job_vector activate the semantic résumé signal: when both
+    resume_vector/job_vector activate the semantic resume signal: when both
     are present, cosine similarity *replaces* the keyword `resume` bonus
     (never stacks with it). Absent either vector, keyword scoring runs
     exactly as before.
@@ -159,8 +184,13 @@ def score_job(
         elif any(job_cat in CATEGORY_AFFINITY.get(c, ()) for c in cats):
             # Adjacent category: keep the job in the running with a smaller
             # bonus, but never hard-fail it the way an unrelated category does.
-            score += 2
-            reasons.append("category-affinity")
+            # The bonus requires a HIGH-confidence classification — a weak
+            # title-token guess must not ride affinity into the shortlist (#23).
+            if str(classified.get("categoryConfidence") or "") == "high":
+                score += 2
+                reasons.append("category-affinity")
+            else:
+                reasons.append("category-unconfirmed")
         else:
             score -= 1
             hard_fail = True
@@ -196,7 +226,9 @@ def score_job(
         reasons.append("seniority")
     elif sen_prefs and "unmarked" in signals:
         # Level-ambiguous title ("Product Manager", "Software Engineer"):
-        # neither bonus nor penalty — never exclude on seniority alone.
+        # unknown level must not score like a confirmed match (#23) — a
+        # small explicit penalty, never an exclusion.
+        score -= 1
         reasons.append("seniority-ambiguous")
     elif sen_prefs:
         score -= 2
@@ -213,14 +245,32 @@ def score_job(
             hard_fail = True
             reasons.append("track-mismatch")
 
-    must = _keyword_hit(blob, prefs.get("mustHaves"))
+    # classified already carries description when fetched (dict copy).
+    must = must_have_hits(classified, prefs.get("mustHaves"))
     if must:
         score += 2
         reasons.append("mustHave")
+    elif prefs.get("mustHaves") and classified.get("description"):
+        # Stated requirement, described role, no match: visible but not
+        # penalized further. Title-only rows get no verdict either way —
+        # penalizing undescribed rows for undescribed requirements would
+        # punish having data (#23 three-valued shape).
+        reasons.append("mustHave-unmet")
+
+    target_roles = prefs.get("targetRoles") or []
+    if target_roles:
+        shape_tokens = set(tokenize(f"{title} {dept}"))
+        for slug in target_roles:
+            toks = [t for t in re.split(r"[-_\s]+", str(slug).lower())
+                    if t and t not in {"of", "the", "and", "a", "for", "to"}]
+            if toks and all(t in shape_tokens for t in toks):
+                score += 3
+                reasons.append("targetRole")
+                break
 
     if resume_keywords:
         if resume_vector is not None and job_vector is not None:
-            # Semantic résumé signal replaces the keyword bonus entirely.
+            # Semantic resume signal replaces the keyword bonus entirely.
             bonus = semantic_bonus(
                 cosine(resume_vector, job_vector),
                 RESUME_SEMANTIC_FLOOR,
@@ -268,6 +318,25 @@ def score_job(
     return out
 
 
+def seniority_unconfirmed(job: dict[str, Any]) -> bool:
+    """True when a job's level is unknown rather than determined (#23).
+
+    Jobs scored without seniority prefs carry no markers and count as
+    confirmed — there was nothing to confirm against.
+    """
+    reasons = job.get("matchReasons") or []
+    if "seniority-ambiguous" not in reasons:
+        return False
+    return not any(r in reasons for r in ("seniority", "staff+", "intern"))
+
+
+def match_sort_key(job: dict[str, Any]) -> tuple[float, int, str]:
+    """Rank key: score desc, then confirmed seniority above ambiguous (#23)."""
+    return (-float(job.get("matchScore") or 0),
+            1 if seniority_unconfirmed(job) else 0,
+            str(job.get("title") or ""))
+
+
 def match_listings(
     listings: list[dict[str, Any]],
     prefs: dict[str, Any] | None,
@@ -296,7 +365,8 @@ def match_listings(
         for j in listings
     ]
     matches = [j for j in scored if j.get("matched")]
-    matches.sort(key=lambda j: (-float(j.get("matchScore") or 0), str(j.get("title") or "")))
+    # At equal scores, confirmed seniority outranks ambiguous (#23).
+    matches.sort(key=match_sort_key)
     depts = Counter(str(j.get("department") or "(none)") for j in listings)
     # Composition of the shortlist itself (#8): a bare count reads as
     # success even when 90% of matches are one unintended family.
@@ -321,6 +391,7 @@ def match_listings(
         "matchDepartments": dict(match_depts.most_common()),
         "matchCategories": dict(match_cats.most_common()),
         "reasonCounts": dict(reason_counts.most_common()),
+        "ambiguousSeniority": sum(1 for j in matches if seniority_unconfirmed(j)),
         "warnings": warnings,
         "jobs": matches,
         "allScored": scored,

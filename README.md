@@ -1,6 +1,6 @@
 # Network Jobs
 
-Local-first agent skill suite: import your résumé and preferences, import LinkedIn connections, discover company career pages, build a personal job corpus, search openings, and draft warm intros — on your machine.
+Local-first agent skill suite: import your resume and preferences, import LinkedIn connections, discover company career pages, build a personal job corpus, search openings, and draft warm intros — on your machine.
 
 Works with any agent that loads [Agent Skills](https://agentskills.io) (Claude Code, Cursor, Codex, OpenCode, Muse, Pi, Gemini CLI, Grok Bot, and others).
 
@@ -9,7 +9,7 @@ Works with any agent that loads [Agent Skills](https://agentskills.io) (Claude C
 If you're an agent working from this repo rather than a human reading it:
 
 1. **Install the skills into yourself** — `npx --yes @hirefrank/network-jobs@latest setup --agent auto` (or `npx skills add hirefrank/network-jobs -g -a …`, then `network-jobs setup` for data + launcher).
-2. **Start with `network-jobs-setup`** — it turns the user's résumé into `profile.json` + `preferences.json` via an interview. Everything downstream reads those two files.
+2. **Start with `network-jobs-setup`** — it turns the user's resume into `profile.json` + `preferences.json` via an interview. Everything downstream reads those two files.
 3. **Follow the skills table below** — each `SKILL.md` is self-contained and states its inputs/outputs. The day-to-day pair is `careers-discover` + `jobs-ingest` (build the corpus) and `network-jobs` (search it).
 4. **For routing**, run `network-jobs routing` — it prints a snippet to drop into a project instruction file so future sessions pick the right skill.
 
@@ -46,7 +46,7 @@ network-jobs update                 # fetch latest + relink
 network-jobs doctor
 ```
 
-Requires: `curl`, `jq`, `unzip`, `python3`, and a working `npm` (for [`agent-browser`](https://github.com/vercel-labs/agent-browser)). Optional: `pdftotext` for PDF résumé extraction.
+Requires: `curl`, `jq`, `unzip`, `python3`, and a working `npm` (for [`agent-browser`](https://github.com/vercel-labs/agent-browser)). Optional: `pdftotext` for PDF resume extraction.
 
 Optional alternate skill placement: `npx skills add hirefrank/network-jobs -g -a …` then still run `network-jobs setup` for data + launcher.
 
@@ -57,22 +57,22 @@ Optional alternate skill placement: `npx skills add hirefrank/network-jobs -g -a
 - “Find open roles at my top companies” → review triage → “ingest that batch”  
 - “Senior PM jobs in NYC” → “Draft an intro to Jane”
 
-Daily use is **in the agent**. The CLI also covers install, update, doctor, résumé/LinkedIn import, corpus clear, and quick `search` / `companies` / `refresh`.
+Daily use is **in the agent**. The CLI also covers install, update, doctor, resume/LinkedIn import, corpus clear, and quick `search` / `companies` / `refresh`.
 
 ## Tips
 
 - **Pipeline stop:** `careers-discover` only stages under `triage/`. Review, then explicitly ask to ingest.
-- **Résumé + prefs:** `network-jobs profile import ~/resume.pdf`, then in your agent run setup from the résumé. Interview covers remote/hybrid/onsite (**onsite scoped to specific cities**, not every office), location, IC vs manager, **former employers include/exclude**, stage/domain, and other gaps the résumé implies.
+- **Resume + prefs:** `network-jobs profile import ~/resume.pdf`, then in your agent run setup from the resume. Interview covers remote/hybrid/onsite (**onsite scoped to specific cities**, not every office), location, IC vs manager, **former employers include/exclude**, stage/domain, and other gaps the resume implies.
 - **Model choice (agnostic):** prefer a **stronger** model for career-page discovery; mid-tier is usually enough for local search and intro drafts.
 - **Refresh:** `network-jobs update`
 - **Health:** `network-jobs doctor`
-- **Semantic matching (optional):** `network-jobs embed-setup` installs fastembed (one-time ~60MB model) so `search`/`rank` also score résumé↔job similarity. Keyword scoring is unchanged when it's not installed.
+- **Semantic matching (optional):** `network-jobs embed-setup` installs fastembed (one-time ~60MB model) so `search`/`rank` also score resume↔job similarity. Keyword scoring is unchanged when it's not installed.
 - **Data:** everything under `~/.network-jobs/` — no hosted API.
 
 ## Pipeline
 
 ```text
-Résumé
+Resume
     → profile import + setup skill   (profile.json + preferences.json)
 LinkedIn ZIP
     → network-jobs-import            (connections + companies graph)
@@ -80,7 +80,7 @@ LinkedIn ZIP
     → you confirm
     → jobs-ingest                    (promote to corpus/)
     → network-jobs                   (search local corpus using prefs defaults)
-    → intro-email-generator          (forwardable warm intro; uses local résumé)
+    → intro-email-generator          (forwardable warm intro; uses local resume)
 ```
 
 Always read [SCHEMA.md](SCHEMA.md) for paths and JSON shapes.
@@ -89,7 +89,7 @@ Always read [SCHEMA.md](SCHEMA.md) for paths and JSON shapes.
 
 1. **Install** — `npm i -g @hirefrank/network-jobs@latest && network-jobs setup --agent auto`
 
-2. **Résumé**
+2. **Resume**
 
 ```bash
 network-jobs profile import ~/Downloads/Resume.pdf
@@ -114,7 +114,7 @@ network-jobs import ~/Downloads/Connections.zip
 
 | Skill | Role |
 |-------|------|
-| [`network-jobs-setup`](skills/network-jobs-setup/SKILL.md) | Résumé → profile, preferences interview, LinkedIn export help |
+| [`network-jobs-setup`](skills/network-jobs-setup/SKILL.md) | Resume → profile, preferences interview, LinkedIn export help |
 | [`network-jobs-import`](skills/network-jobs-import/SKILL.md) | ZIP → local company graph |
 | [`careers-discover`](skills/careers-discover/SKILL.md) | Model-driven career page discovery + staging |
 | [`jobs-ingest`](skills/jobs-ingest/SKILL.md) | Triage → normalized corpus shards (after you confirm) |
@@ -150,8 +150,8 @@ Skills self-describe for routing. `network-jobs routing` prints an optional snip
 
 | Wipe | Keeps |
 |------|--------|
-| `corpus clear` | profile, prefs, résumé, LinkedIn graph |
-| `profile clear` | corpus, LinkedIn graph (`--resume` also drops résumé files) |
+| `corpus clear` | profile, prefs, resume, LinkedIn graph |
+| `profile clear` | corpus, LinkedIn graph (`--resume` also drops resume files) |
 | `uninstall` / `reset --data` | nothing under `~/.network-jobs/` |
 
 ## Design notes

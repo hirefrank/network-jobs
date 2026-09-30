@@ -24,6 +24,14 @@ def _person_name(row: dict[str, Any]) -> str:
 
 
 def _score_forwarder(job: dict[str, Any], person: dict[str, Any]) -> float:
+    """Title-overlap plausibility for an intro — NOT relationship strength.
+
+    Every connection is 1st degree by construction and the export carries no
+    interaction data, so closeness is unrepresentable here. This scores
+    whether the person's role makes them a plausible forwarder for the job
+    (same function, manager track). Who the user actually knows well must
+    come from the user (--prefer) or the confirm step, never this number.
+    """
     position = str(person.get("position") or "")
     blob = f"{job.get('title') or ''} {job.get('department') or ''} {job.get('category') or ''}"
     job_tokens = set(tokenize(blob))
@@ -86,6 +94,7 @@ def rank_intros(
     *,
     k_roles: int = 2,
     k_forwarders: int = 2,
+    prefer: list[str] | None = None,
 ) -> dict[str, Any]:
     open_jobs = [j for j in jobs if str(j.get("status") or "open") != "closed"]
     # Ranked input is already score-ordered, but sort defensively so the
@@ -102,9 +111,16 @@ def rank_intros(
                 "position": person.get("position") or "",
                 "url": person.get("url") or "",
                 "email": person.get("email") or "",
+                "connectedOn": person.get("connectedOn") or "",
                 "score": round(_score_forwarder(job, person), 2),
             })
-        scored.sort(key=lambda p: (-p["score"], p["name"]))
+        preferred = [t.strip().lower() for t in (prefer or []) if t and t.strip()]
+
+        def _sort_key(p: dict[str, Any]) -> tuple[int, float, str]:
+            pinned = 0 if any(t in str(p["name"]).lower() for t in preferred) else 1
+            return (pinned, -p["score"], p["name"])
+
+        scored.sort(key=_sort_key)
         forwarders = [p for p in scored if p["name"]][: max(0, k_forwarders)]
         url = str(job.get("url") or "")
         if url:

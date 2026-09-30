@@ -1,5 +1,41 @@
 # Changelog
 
+## v1.6.0 — 2026-09-29
+
+Fit quality, forwarder honesty, and scoring honesty (issues #13–#23).
+
+### Job descriptions
+- New `fetch-descriptions` step fills JD bodies (truncated plain text) for
+  matches only, plus ATS departments when rows lack one. Bodies ride
+  classify → merge → shards untouched.
+- `mustHaves` moved from dead substring to AND-set matching over
+  title + department + company + description; unmatched on a described
+  role records `mustHave-unmet` (visible, no penalty).
+
+### Review, intros & reporting
+- `review-matches` clusters by `head/domain` family stems with suggested
+  vetoes; leak reports group vetoes and hard-fails.
+- `intros --title/--url/--company/--prefer` targets reviewed roles and
+  pins people the user actually knows; forwarder order documented as
+  title-overlap only, with connection year shown as context.
+- `search -v` fit brief (reasons, resume hits, warmth, gaps); default
+  output unchanged.
+- New `report` command: sanitized diagnostic bundle → GitHub issue.
+- `build-pack` / `fetch-pack` wired into the CLI.
+
+### Scoring honesty
+- Level-ambiguous titles score −1 (was neutral); confirmed seniority wins
+  score ties in both match and rank paths.
+- Affinity bonus requires high-confidence classification
+  (`category-unconfirmed` otherwise).
+- `targetRoles` slugs score +3 as an aspirational bonus, never a veto.
+
+### Locations
+- Unknown-location sentinels, word-boundary short-token matching,
+  idempotent `parse_locations`, comma-list city splitting (with `City, ST`
+  preservation), `anywhere`-as-remote.
+- Greenhouse object-`location` normalization; prose placeholder ATS ids.
+
 ## v1.5.0 — 2026-09-29
 
 Location correctness, review precision, ingest safety, and fit evidence
