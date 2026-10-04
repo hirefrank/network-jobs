@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## v1.6.1 — 2026-10-04
+
+Data-integrity fixes (#24, #25).
 
 ### Fixed
 - `match-prefs` no longer destroys fetched JD bodies. It rehydrates
@@ -15,6 +17,14 @@
   all strong candidates will meet every single qualification") plus
   scattered "engineering"/"partnership" elsewhere, promoting two roles on
   nothing. Tokens must co-occur within a window scaled to phrase length.
+- Fingerprints no longer include the company segment (#25). `fingerprint()`
+  keyed jobs `id:{company}:{atsId}`, with the company coming from the
+  optional `--company` flag — so a re-score without the flag rewrote every
+  key and the documented re-ingest silently doubled the corpus (30→60).
+  Keys are now `id:{atsId}` (company lives on the job object, not in the
+  key), and `rebuild` reconciles an incoming `externalId` that matches an
+  existing entry under a different fingerprint, merging in place and
+  reporting `driftWarnings` instead of appending a duplicate.
 
 ## v1.6.0 — 2026-09-29
 
