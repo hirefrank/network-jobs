@@ -723,6 +723,39 @@ class ClassifierLocationTests(unittest.TestCase):
         self.assertEqual(jobs[0]["category"], "product")
         self.assertTrue(any(j.get("needsLlm") for j in jobs))
 
+    def test_classify_accepts_matches_envelope(self):
+        # `match-pregs` writes {"jobs": [...]}; `fetch-descriptions` writes a
+        # bare array. The documented classify step follows match-preps, so it
+        # has to take the envelope without the caller extracting it by hand.
+        tmp = Path(tempfile.mkdtemp(prefix="nj-clf-env-"))
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        rows = [{"title": "Senior Product Manager", "location": "New York, NY"},
+                {"title": "Engineering Manager", "location": "Remote"}]
+
+        dest = tmp / "out.json"
+        src = tmp / "env.json"
+        src.write_text(json.dumps({"jobs": rows}) + "\n")
+        rc = helper_main(["classify", "--input", str(src), "--out", str(dest),
+                          "--company", "Stripe"])
+        self.assertEqual(rc, 0)
+        env_jobs = json.loads(dest.read_text())
+
+        bare = tmp / "bare.json"
+        bare.write_text(json.dumps(rows) + "\n")
+        rc = helper_main(["classify", "--input", str(bare), "--out", str(dest),
+                          "--company", "Stripe"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(env_jobs, json.loads(dest.read_text()))
+
+    def test_classify_rejects_unrecognised_shape(self):
+        tmp = Path(tempfile.mkdtemp(prefix="nj-clf-bad-"))
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        src = tmp / "bad.json"
+        src.write_text(json.dumps({"results": [{"title": "PM"}]}) + "\n")
+        rc = helper_main(["classify", "--input", str(src),
+                          "--out", str(tmp / "out.json"), "--company", "Stripe"])
+        self.assertEqual(rc, 1)
+
 
 class CrawlAndIntroTests(unittest.TestCase):
     def test_intro_role_filters(self):

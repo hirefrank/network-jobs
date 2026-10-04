@@ -13,7 +13,7 @@ If you're an agent working from this repo rather than a human reading it:
 3. **Follow the skills table below** — each `SKILL.md` is self-contained and states its inputs/outputs. The day-to-day pair is `careers-discover` + `jobs-ingest` (build the corpus) and `network-jobs` (search it).
 4. **For routing**, run `network-jobs routing` — it prints a snippet to drop into a project instruction file so future sessions pick the right skill.
 
-Always read [SCHEMA.md](SCHEMA.md) for data paths and JSON shapes. Daily use lives in the agent; the CLI covers setup, import, and quick `search` / `companies` / `refresh`.
+Always read [SCHEMA.md](SCHEMA.md) for data paths and JSON shapes. Daily use lives in the agent; the CLI covers setup, import, and quick `search` / `companies` / `refresh`. Release notes are in [CHANGELOG.md](CHANGELOG.md).
 
 ## Install
 

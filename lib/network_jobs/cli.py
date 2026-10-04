@@ -824,10 +824,27 @@ def cmd_rebuild(args: argparse.Namespace) -> int:
     return 0
 
 
+def _coerce_job_list(payload: Any) -> list[Any] | None:
+    """Return the job list from either supported on-disk shape, else None.
+
+    `match-prefs` writes a `{"jobs": [...]}` envelope; `fetch-descriptions`
+    writes a bare array. Both appear in the documented classify path, so
+    accept either rather than making every caller hand-extract with jq.
+    """
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict):
+        jobs = payload.get("jobs")
+        if isinstance(jobs, list):
+            return jobs
+    return None
+
+
 def cmd_classify(args: argparse.Namespace) -> int:
-    listings = _load_json(Path(args.input), [])
-    if not isinstance(listings, list):
-        print("input must be a JSON array", file=sys.stderr)
+    listings = _coerce_job_list(_load_json(Path(args.input), []))
+    if listings is None:
+        print('input must be a JSON array of jobs, or an object with a "jobs" array',
+              file=sys.stderr)
         return 1
     result = classify_listings(listings, company=args.company or None)
     dest = Path(args.out) if args.out else Path(args.input)
