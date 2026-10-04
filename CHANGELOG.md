@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.6.2 — 2026-10-04
 
 ### Fixed
 - `classify` now accepts a `{"jobs": [...]}` envelope as well as a bare array.
