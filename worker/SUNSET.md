@@ -24,7 +24,7 @@ Implementation: [`src/index.ts`](./src/index.ts).
    - `curl -s https://jobs.hirefrank.com/hirefrank/advisor.json | jq -r .retired` → `true`
    - `curl -sH "Accept: text/html" https://jobs.hirefrank.com/ | head -c 120` → sunset page
 3. **D1 backup:** see [`docs/hosted-d1-export.md`](../docs/hosted-d1-export.md) (export taken 2026-10-04; D1 deleted).
-4. Cloudflare teardown (operator): crons, `crawl-queue`, D1, R2 export buckets — keep this worker on `jobs.hirefrank.com`.
+4. Cloudflare teardown (2026-10-04): crons, `crawl-queue`, D1, R2 `advisor-skills-export`, and `jobs-api` secrets/bindings. Keep this worker on `jobs.hirefrank.com`.
 
 ## What stays
 
