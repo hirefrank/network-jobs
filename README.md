@@ -4,6 +4,8 @@ Local-first agent skill suite: import your resume and preferences, import Linked
 
 Works with any agent that loads [Agent Skills](https://agentskills.io) (Claude Code, Cursor, Codex, OpenCode, Muse, Pi, Gemini CLI, Grok Bot, and others).
 
+**Hosted legacy (retired 2026-10-04):** `jobs.hirefrank.com` returns HTTP 410 with install hints. Sunset worker and ops history live in [hirefrank/biz `apps/jobs/SUNSET.md`](https://github.com/hirefrank/biz/blob/main/apps/jobs/SUNSET.md). Operator checklist: [docs/DECOMMISSION.md](docs/DECOMMISSION.md).
+
 ## For agents
 
 If you're an agent working from this repo rather than a human reading it:
