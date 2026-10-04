@@ -1,6 +1,6 @@
 # Decommission checklist (hosted Network Jobs)
 
-**Status (2026-10-04):** Hosted sunset **complete** in production. Local suite remains **`hirefrank/network-jobs`** (install via `network-jobs setup`). Sunset worker source and ops sequence: [`apps/jobs/SUNSET.md`](https://github.com/hirefrank/biz/blob/main/apps/jobs/SUNSET.md) in `hirefrank/biz`.
+**Status (2026-10-04):** Hosted sunset **complete** in production. Local suite: install via `network-jobs setup`. Sunset worker source: [`worker/`](./../worker/) — ops sequence in [`worker/SUNSET.md`](../worker/SUNSET.md).
 
 ## Pre-sunset validation
 
@@ -12,14 +12,14 @@
   # Expect: HTTP 410, body fields retired=true, install, docs, github
   jq -r '.retired,.install' /tmp/jobs-retire.json
   ```
-- [x] **D1 full export** (2026-10-04): `hirefrank/biz` → `apps/jobs/exports/advisor-jobs-db-2026-10-04.sql` (~1.5 GB, gitignored). Upload copy to Google Drive (operator). No automatic importer into `~/.network-jobs/` — reinstall via `network-jobs setup` + LinkedIn import.
-- [ ] **Secrets audit** (operator): from `hirefrank/biz/apps/jobs`, `bun run wrangler secret list`; remove crawl/API secrets no longer needed; redeploy sunset worker if dashboard still shows stale bindings.
+- [x] **D1 full export** (2026-10-04): see [`docs/hosted-d1-export.md`](./hosted-d1-export.md). Upload operator copy to Google Drive.
+- [ ] **Secrets audit** (operator): from `worker/`, `bun run wrangler secret list`; remove crawl/API secrets no longer needed; redeploy if dashboard shows stale bindings.
 
 ## Biz monorepo (`hirefrank/biz`)
 
 - [x] Remove Jobs deploy/preview target from `scripts/ci/targets.ts` and `docs/ci.md` (2026-10-04, PR #140).
-- [x] Remove unused root shortcuts (`dev:jobs`, `build:jobs`, `jobs:*`, `hf:jobs`); keep `pnpm deploy:jobs` for manual sunset deploys.
-- [x] Replace hosted `apps/jobs` with sunset worker only; merge to `main` (PR #140).
+- [x] Remove unused biz shortcuts (`dev:jobs`, `build:jobs`, `jobs:*`, `hf:jobs`, `deploy:jobs`); deploy from `worker/` in this repo.
+- [x] Remove `hirefrank/biz` `apps/jobs` workspace (pointer README only); sunset worker lives here.
 - [x] Omit `hf jobs` from built registry (`scripts/generate-cli-registry.ts` `SKIP_FILES` includes `jobs.ts`).
 - [x] Vendored `.agents/skills/network-jobs` points at local corpus paths (not live `curl` to `jobs.hirefrank.com`).
 - [ ] Repoint `skills-lock.json` / **`hirefrank/skills`** `network-jobs` entry to `github:hirefrank/network-jobs#main` (public skills site + lockfile bump).

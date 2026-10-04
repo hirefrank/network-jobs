@@ -1,0 +1,12 @@
+name = "jobs-api"
+account_id = "6034f1c5d23e5503f6573740480cf0d6"
+main = "src/index.ts"
+compatibility_date = "2024-03-20"
+workers_dev = true
+
+[[routes]]
+pattern = "jobs.hirefrank.com"
+custom_domain = true
+
+[observability]
+enabled = false

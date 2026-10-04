@@ -5,6 +5,18 @@ on:
   pull_request:
 
 jobs:
+  worker-sunset:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Test jobs-api sunset worker
+        working-directory: worker
+        run: |
+          bun install --frozen-lockfile || bun install
+          bun run test
+          bun run typecheck
+
   test:
     runs-on: ubuntu-latest
     strategy:
