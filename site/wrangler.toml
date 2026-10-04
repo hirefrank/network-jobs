@@ -1,3 +1,7 @@
+# Deploys: Cloudflare dashboard Builds integration (Workers & Pages →
+# network-jobs-landing → Settings → Builds) watches this repo, root `site`,
+# watch paths `site/**`. Push to main to ship; avoid manual `wrangler deploy`
+# from stale checkouts.
 name = "network-jobs-landing"
 main = "src/index.ts"
 compatibility_date = "2026-09-20"
