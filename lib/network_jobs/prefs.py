@@ -104,14 +104,56 @@ def _keyword_hit(text: str, phrases: list[str] | None) -> list[str]:
     return hits
 
 
+# Character window for mustHave token locality, keyed by token count.
+# A longer phrase needs more room for filler words between its tokens.
+MUSTHAVE_WINDOW = {1: 40, 2: 80, 3: 120, 4: 160, 5: 200}
+
+
+def _tokens_local(blob_lower: str, need: list[str], window: int) -> bool:
+    """True when every token appears within `window` characters of the others.
+
+    A whole-document token *set* is far too loose once a real JD body is
+    in scope: "strong" (in "Not all strong candidates..."), "engineering"
+    and "partnership" scattered across 10k chars satisfied an AND-set for
+    "strong engineering partnership" and promoted two Anthropic roles on
+    boilerplate alone (#24). Locality is what makes the phrase mean
+    something.
+    """
+    if not need:
+        return False
+    positions: list[int] = []
+    for token in need:
+        hits: list[int] = []
+        start = 0
+        while True:
+            idx = blob_lower.find(token, start)
+            if idx < 0:
+                break
+            hits.append(idx)
+            start = idx + len(token)
+        if not hits:
+            return False
+        positions.append(hits)
+    # Every token must have some occurrence inside one shared window.
+    for anchor in positions[0]:
+        if all(
+            any(abs(pos - anchor) <= window for pos in options)
+            for options in positions[1:]
+        ):
+            return True
+    return False
+
+
 def must_have_hits(job: dict[str, Any], must_haves: list[str] | None) -> list[str]:
-    """Aspirational phrases need AND-set matching, not substring (#21).
+    """Aspirational phrases need local AND-set matching, not substring (#21).
 
     Plain substring never fires on natural prose ("strong engineering
     partnership" matches 0 of 30 titles), so mustHaves looked load-bearing
     while doing nothing. Requiring every significant token present lets a
-    phrase match a description that actually discusses it. Matches against
-    title + department + company + description (when fetched).
+    phrase match a description that actually discusses it — but presence
+    alone is not enough, so tokens must also co-occur locally (#24).
+    Matches against title + department + company + description (when
+    fetched).
     """
     if not must_haves:
         return []
@@ -120,10 +162,15 @@ def must_have_hits(job: dict[str, Any], must_haves: list[str] | None) -> list[st
         str(job.get("company") or ""), str(job.get("description") or ""),
     ])
     tokens = set(tokenize(blob.lower()))
+    blob_lower = blob.lower()
     hits = []
     for phrase in must_haves:
         toks = [t for t in tokenize(str(phrase).lower()) if len(t) > 2]
-        if toks and all(t in tokens for t in toks):
+        if not toks or not all(t in tokens for t in toks):
+            continue
+        # Tokens present — but only count it if they co-occur locally.
+        width = MUSTHAVE_WINDOW.get(len(toks), 120)
+        if _tokens_local(blob_lower, toks, width):
             hits.append(phrase)
     return hits
 

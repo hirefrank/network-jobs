@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .classify import classify_listings
+from .fingerprint import fingerprint
 from .corpus import rebuild
 from .inventory import upsert_inventory, write_summary_json
 from .pagination import DEFAULT_MAX_LISTINGS, DEFAULT_MAX_PAGES, paginate, write_pagination
@@ -106,6 +107,53 @@ def _do_match_prefs(
     return result
 
 
+_DESCRIPTION_FIELDS = ("description", "descriptionFetchedAt", "descriptionSource")
+
+
+def _rehydrate_descriptions(
+    listings: list[dict[str, Any]], matches_path: Path, company: str
+) -> int:
+    """Carry fetched JD bodies from a previous matches.json back onto listings.
+
+    `fetch-descriptions` writes bodies into matches.json, but match-prefs
+    scores `listings.json` — which never holds them. Re-scoring therefore
+    destroyed every body, so `mustHaves` could never fire against a
+    description no matter the step order (#24). Merging them in *before*
+    scoring fixes both: bodies survive a re-score, and the AND-set
+    matcher sees them.
+
+    Raw listing rows carry no `fingerprint` (classify computes one), so the
+    join key is recomputed with the same helper and company the classify
+    path uses. Rows that no longer resolve to a prior body are simply left
+    undescribed — which is the honest state, not a regression.
+    """
+    prior = _load_json(matches_path, None)
+    rows = prior.get("jobs") if isinstance(prior, dict) else prior
+    if not isinstance(rows, list):
+        return 0
+    by_fp = {
+        str(row.get("fingerprint") or fingerprint(row, company=company)): row
+        for row in rows
+        if isinstance(row, dict)
+    }
+    by_fp.pop("", None)
+    if not by_fp:
+        return 0
+    restored = 0
+    for job in listings:
+        if not isinstance(job, dict) or job.get("description"):
+            continue
+        prior_row = by_fp.get(fingerprint(job, company=company))
+        if not prior_row or not prior_row.get("description"):
+            continue
+        for field in _DESCRIPTION_FIELDS:
+            value = prior_row.get(field)
+            if value:
+                job[field] = value
+        restored += 1
+    return restored
+
+
 def cmd_match_prefs(args: argparse.Namespace) -> int:
     triage = Path(args.triage_dir).expanduser().resolve()
     listings_path = Path(args.listings) if args.listings else triage / "index" / "listings.json"
@@ -113,6 +161,9 @@ def cmd_match_prefs(args: argparse.Namespace) -> int:
     if not isinstance(listings, list):
         print("listings.json must be a JSON array", file=sys.stderr)
         return 1
+    restored_descriptions = _rehydrate_descriptions(
+        listings, triage / "index" / "matches.json", args.company or ""
+    )
     data = data_home(args.data)
     prefs_path = Path(args.prefs) if args.prefs else data / "preferences.json"
     prefs = _load_json(prefs_path, {})
@@ -139,6 +190,7 @@ def cmd_match_prefs(args: argparse.Namespace) -> int:
         "matchCategories": result["matchCategories"],
         "reasonCounts": result["reasonCounts"],
         "ambiguousSeniority": result["ambiguousSeniority"],
+        "restoredDescriptions": restored_descriptions,
         "warnings": result["warnings"],
     }
     _dump(quiet, args.verbose)

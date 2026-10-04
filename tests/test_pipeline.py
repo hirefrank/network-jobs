@@ -1359,6 +1359,95 @@ class FetchDescriptionsTests(unittest.TestCase):
             ["strong engineering partnership"])
         self.assertEqual(must_have_hits(title_only, ["platform"]), [])
 
+    def test_must_haves_require_token_locality(self):
+        # #24: a whole-document AND-set is too loose once real JD text is
+        # in scope. Anthropic's legal boilerplate ("Not all strong
+        # candidates will meet every single qualification") plus scattered
+        # "engineering"/"partnership" satisfied the phrase and promoted two
+        # roles on nothing. Tokens must co-occur locally.
+        from network_jobs.prefs import must_have_hits
+
+        phrase = ["strong engineering partnership"]
+        base = {"title": "Product Manager", "department": "", "company": "Anthropic"}
+
+        filler = ("Responsibilities include partnering with teams, "
+                  "engineering standards, and strong ownership. ") * 12
+        scattered = dict(base, description=(
+            "Have a strong grasp of AI. " + filler
+            + " Apply if you do not believe you meet every single "
+              "qualification."))
+        self.assertEqual(must_have_hits(scattered, phrase), [])
+
+        # All three tokens present, but nowhere near each other — the shape
+        # that promoted two Anthropic roles on legal boilerplate alone.
+        far_apart = dict(base, description=(
+            "Have a strong grasp of AI. "
+            + "Our teams ship quickly and iterate. " * 12
+            + "Engineering owns the platform. "
+            + "We measure outcomes each quarter. " * 12
+            + "A partnership with customers matters here."))
+        self.assertEqual(must_have_hits(far_apart, phrase), [])
+
+        genuine = dict(base, description=(
+            "You will build a strong engineering partnership with "
+            "platform teams."))
+        self.assertEqual(
+            must_have_hits(genuine, phrase), ["strong engineering partnership"])
+
+    def test_match_prefs_rehydrates_descriptions_from_prior_matches(self):
+        # #24: fetch-descriptions writes bodies into matches.json, but
+        # match-prefs scores listings.json, so a re-score destroyed every
+        # body and mustHaves could never fire in any step order.
+        import json as _json
+        import tempfile
+        from network_jobs.cli import _rehydrate_descriptions
+        from network_jobs.fingerprint import fingerprint
+
+        listing = {"title": "Product Manager, Payments", "location": "NYC",
+                   "url": "https://example.invalid/j/1", "externalId": "1"}
+        fp = fingerprint(listing, company="Stripe")
+        prior = {"jobs": [{
+            "fingerprint": fp, "title": listing["title"], "company": "Stripe",
+            "description": "Own payments intelligence tooling.",
+            "descriptionFetchedAt": "2026-09-29T00:00:00Z",
+            "descriptionSource": "ats-json",
+        }]}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "matches.json"
+            path.write_text(_json.dumps(prior))
+            listings = [dict(listing)]
+            restored = _rehydrate_descriptions(listings, path, "Stripe")
+
+        self.assertEqual(restored, 1)
+        self.assertEqual(listings[0]["description"],
+                         "Own payments intelligence tooling.")
+        self.assertEqual(listings[0]["descriptionSource"], "ats-json")
+
+    def test_rehydrate_does_not_clobber_or_invent_bodies(self):
+        # A row that already has a body keeps it, and a row with no prior
+        # body stays honestly undescribed rather than borrowing one.
+        import json as _json
+        import tempfile
+        from network_jobs.cli import _rehydrate_descriptions
+        from network_jobs.fingerprint import fingerprint
+
+        have = {"title": "A", "location": "NYC", "externalId": "1"}
+        fresh = {"title": "B", "location": "NYC", "externalId": "2"}
+        prior = {"jobs": [{
+            "fingerprint": fingerprint(have, company="Stripe"),
+            "description": "prior body",
+        }]}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "matches.json"
+            path.write_text(_json.dumps(prior))
+            already = dict(have, description="current body")
+            rows = [already, dict(fresh)]
+            restored = _rehydrate_descriptions(rows, path, "Stripe")
+
+        self.assertEqual(restored, 0)
+        self.assertEqual(rows[0]["description"], "current body")
+        self.assertNotIn("description", rows[1])
+
     def test_description_survives_classify_and_merge(self):
         from network_jobs.classify import classify_job
         from network_jobs.corpus import merge_jobs

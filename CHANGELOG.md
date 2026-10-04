@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- `match-prefs` no longer destroys fetched JD bodies. It rehydrates
+  `description` / `descriptionFetchedAt` / `descriptionSource` from the
+  existing `matches.json` onto `listings.json` (joined on the same
+  fingerprint the classify path computes) before scoring, so a re-score
+  keeps bodies and `mustHaves` can finally fire. Reported in #24, where the
+  only ways to run the steps all left `mustHave` permanently unreachable.
+- `mustHaves` now require token **locality**, not just co-presence. With
+  real JD text in scope, a whole-document AND-set matched
+  "strong engineering partnership" on Anthropic's legal boilerplate ("Not
+  all strong candidates will meet every single qualification") plus
+  scattered "engineering"/"partnership" elsewhere, promoting two roles on
+  nothing. Tokens must co-occur within a window scaled to phrase length.
+
 ## v1.6.0 — 2026-09-29
 
 Fit quality, forwarder honesty, and scoring honesty (issues #13–#23).
