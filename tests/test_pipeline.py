@@ -1448,6 +1448,30 @@ class FetchDescriptionsTests(unittest.TestCase):
         self.assertEqual(rows[0]["description"], "current body")
         self.assertNotIn("description", rows[1])
 
+    def test_rehydrate_survives_fingerprint_spelling_drift(self):
+        # #24 follow-up: `fingerprint()` returns an existing field verbatim,
+        # so the stored key depends on whether the writing run passed
+        # `--company`. Keying the join on one spelling silently restored 0
+        # — and re-ingesting then duplicated every corpus job. All four
+        # combinations must join.
+        import json as _json
+        import tempfile
+        from network_jobs.cli import _rehydrate_descriptions
+
+        listing = {"title": "Product Manager, Payments", "location": "NYC",
+                   "externalId": "7812856", "url": "https://example.invalid/j/1"}
+        for stored in ("id:stripe:7812856", "id::7812856"):
+            prior = {"jobs": [dict(listing, fingerprint=stored,
+                                   company="Stripe", description="BODY")]}
+            for company in ("Stripe", ""):
+                with tempfile.TemporaryDirectory() as tmp:
+                    path = Path(tmp) / "matches.json"
+                    path.write_text(_json.dumps(prior))
+                    rows = [dict(listing)]
+                    restored = _rehydrate_descriptions(rows, path, company)
+                self.assertEqual(restored, 1, f"{stored} / {company!r}")
+                self.assertEqual(rows[0]["description"], "BODY")
+
     def test_description_survives_classify_and_merge(self):
         from network_jobs.classify import classify_job
         from network_jobs.corpus import merge_jobs

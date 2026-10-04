@@ -110,6 +110,32 @@ def _do_match_prefs(
 _DESCRIPTION_FIELDS = ("description", "descriptionFetchedAt", "descriptionSource")
 
 
+def _row_keys(job: dict[str, Any], company: str) -> list[str]:
+    """Every plausible identity for a row, most specific first.
+
+    `fingerprint()` short-circuits on an existing `fingerprint` field, so
+    the same job may arrive keyed with or without the company segment.
+    Both spellings plus the raw ATS id are offered so a join does not
+    silently miss when `--company` differs from the run that wrote the
+    file.
+    """
+    keys: list[str] = []
+    stored = job.get("fingerprint")
+    if isinstance(stored, str) and stored:
+        keys.append(stored)
+    for name in (company, ""):
+        try:
+            computed = fingerprint({k: v for k, v in job.items() if k != "fingerprint"}, company=name)
+        except Exception:
+            continue
+        if computed and computed not in keys:
+            keys.append(computed)
+    ext = str(job.get("externalId") or "")
+    if ext and ext not in keys:
+        keys.append(ext)
+    return keys
+
+
 def _rehydrate_descriptions(
     listings: list[dict[str, Any]], matches_path: Path, company: str
 ) -> int:
@@ -122,29 +148,51 @@ def _rehydrate_descriptions(
     scoring fixes both: bodies survive a re-score, and the AND-set
     matcher sees them.
 
-    Raw listing rows carry no `fingerprint` (classify computes one), so the
-    join key is recomputed with the same helper and company the classify
-    path uses. Rows that no longer resolve to a prior body are simply left
-    undescribed — which is the honest state, not a regression.
+    Joining is deliberately forgiving. A row that already carries a
+    `fingerprint` keeps it verbatim (`fingerprint()` returns it unchanged),
+    so the stored key depends on whether the run that produced the file
+    passed `--company`: the same job can be keyed `id:stripe:7812856` or
+    `id::7812856`. Keying the join on one spelling made this silently
+    restore 0 — and a corpus re-ingest then duplicated every job, because
+    the new batch was written under a different key. So try the stored
+    fingerprint, then both spellings, then the ATS id when it is
+    unambiguous. Rows that genuinely have no prior body are left
+    undescribed, which is the honest state.
     """
     prior = _load_json(matches_path, None)
     rows = prior.get("jobs") if isinstance(prior, dict) else prior
     if not isinstance(rows, list):
         return 0
-    by_fp = {
-        str(row.get("fingerprint") or fingerprint(row, company=company)): row
-        for row in rows
-        if isinstance(row, dict)
-    }
-    by_fp.pop("", None)
-    if not by_fp:
-        return 0
+
+    by_key: dict[str, dict[str, Any]] = {}
+    by_ext: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        if not isinstance(row, dict) or not row.get("description"):
+            continue
+        for key in _row_keys(row, company):
+            by_key.setdefault(key, row)
+        ext = str(row.get("externalId") or "")
+        if ext:
+            by_ext.setdefault(ext, []).append(row)
+
+    def _prior_row(job: dict[str, Any]) -> dict[str, Any] | None:
+        for key in _row_keys(job, company):
+            hit = by_key.get(key)
+            if hit is not None:
+                return hit
+        ext = str(job.get("externalId") or "")
+        if ext:
+            candidates = by_ext.get(ext) or []
+            if len(candidates) == 1:
+                return candidates[0]
+        return None
+
     restored = 0
     for job in listings:
         if not isinstance(job, dict) or job.get("description"):
             continue
-        prior_row = by_fp.get(fingerprint(job, company=company))
-        if not prior_row or not prior_row.get("description"):
+        prior_row = _prior_row(job)
+        if not prior_row:
             continue
         for field in _DESCRIPTION_FIELDS:
             value = prior_row.get(field)
