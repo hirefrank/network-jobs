@@ -88,15 +88,22 @@ def fingerprint(job: dict[str, Any], company: str | None = None) -> str:
     existing = job.get("fingerprint")
     if isinstance(existing, str) and existing.startswith(("id:", "fp:")):
         return existing
-    company_n = normalize_company(company or str(job.get("company") or ""))
     ext = ats_id(job)
     if ext:
-        return f"id:{company_n}:{ext}"
+        # Use ATS id as the primary key. Company is stored separately on the
+        # job object and does not need to be in the fingerprint key. This
+        # prevents silent duplication when --company is passed inconsistently
+        # (issue #25).
+        return f"id:{ext}"
+    # Fallback: no ATS id. Use title + location + company from job data.
+    # The company parameter is intentionally ignored here to keep the key
+    # stable regardless of CLI flags.
+    company_n = normalize_company(str(job.get("company") or ""))
     title_n = normalize_title(str(job.get("title") or ""))
     loc_n = location_key(job)
     basis = f"{company_n}|{title_n}|{loc_n}"
     digest = hashlib.sha1(basis.encode("utf-8")).hexdigest()[:12]
-    return f"fp:{company_n}:{digest}"
+    return f"fp:{digest}"
 
 
 def listing_set_hash(jobs: list[dict[str, Any]], company: str | None = None) -> str:

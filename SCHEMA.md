@@ -271,7 +271,7 @@ Verbatim capture of each fetch/browser snapshot **before** presenting results to
 ```json
 {
   "id": "stripe-senior-backend-engineer-123",
-  "fingerprint": "id:stripe:123",
+  "fingerprint": "id:123",
   "title": "Senior Backend Engineer",
   "company": "Stripe",
   "companyDomain": "stripe.com",
@@ -297,7 +297,7 @@ Salary is `{ "min", "max" }` in annual USD with optional `"currency"` (default U
 
 `description` (optional free text, JD body truncated to ~10k chars, with `descriptionFetchedAt` / `descriptionSource`) rides through classify, merge, and shards untouched. mustHaves matches against it; embeddings include it when present. Rows without one are title-only and score structurally weaker — not incidentally, but because there are no requirements to match against.
 
-Identity is **`fingerprint`**, not URL: `id:{company}:{atsId}` when `externalId` is known, otherwise `fp:{company}:{sha1(title+locations)}`. Placeholder ATS ids (`null`, `n/a`, `unknown`, `tbd`, `-`, plus prose label-leaks like `See Opening ID`) are treated as absent so distinct jobs never collide on a shared placeholder. The full set lives in `PLACEHOLDER_ATS_IDS` (`lib/network_jobs/fingerprint.py`). Rebuild merges on fingerprint: incoming wins, but `firstSeen` is preserved, `lastSeen` is inherited from the previous record when the incoming batch lacks it (a batch without `lastSeen` is not evidence the job was seen today), and a previous `postedAt` is kept when incoming lacks one. `status` is `open` | `closed`. Closed jobs stay in `jobs-all.json` but are omitted from searchable shards.
+Identity is **`fingerprint`**, not URL: `id:{atsId}` when `externalId` is known, otherwise `fp:{sha1(company+title+locations)}` (company from job data, not CLI flag — see #25). Placeholder ATS ids (`null`, `n/a`, `unknown`, `tbd`, `-`, plus prose label-leaks like `See Opening ID`) are treated as absent so distinct jobs never collide on a shared placeholder. The full set lives in `PLACEHOLDER_ATS_IDS` (`lib/network_jobs/fingerprint.py`). Rebuild merges on fingerprint: incoming wins, but `firstSeen` is preserved, `lastSeen` is inherited from the previous record when the incoming batch lacks it (a batch without `lastSeen` is not evidence the job was seen today), and a previous `postedAt` is kept when incoming lacks one. If an incoming job's `externalId` matches an existing entry under a different fingerprint, the entries are merged and a `driftWarnings` entry is emitted (prevents silent duplication from historical `--company` flag inconsistency). `status` is `open` | `closed`. Closed jobs stay in `jobs-all.json` but are omitted from searchable shards.
 
 **Expiry / close:** when ingesting a company, unseen open jobs for that company are marked `closed` **only if** triage `pagination.complete` is true. Incomplete crawls (truncated, cap hit, missing next page) must not expire anything.
 

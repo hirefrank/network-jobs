@@ -521,6 +521,26 @@ class FingerprintExpiryTests(unittest.TestCase):
         merged, _ = merge_jobs([], [a, b])
         self.assertEqual(len(merged), 1)
 
+    def test_merge_reconciles_externalid_across_fingerprint_drift(self):
+        # #25: incoming job with same externalId but different fingerprint
+        # (old format with company vs new format without) should merge into
+        # existing entry, not duplicate. merge_info.driftWarnings records it.
+        from network_jobs.corpus import merge_jobs
+
+        # Existing job with old-style fingerprint (id:company:externalId)
+        existing = [self._job(externalId="7812856", fingerprint="id:stripe:7812856",
+                              company="Stripe", title="Product Manager", location="NYC")]
+        # Incoming job with new-style fingerprint (id:externalId) - same ATS id
+        incoming = [self._job(externalId="7812856", fingerprint="id:7812856",
+                              company="Stripe", title="Product Manager", location="NYC",
+                              description="Updated description")]
+        merged, info = merge_jobs(existing, incoming)
+        self.assertEqual(len(merged), 1, "Should merge, not duplicate")
+        self.assertEqual(merged[0]["description"], "Updated description")
+        self.assertTrue(info["driftWarnings"])
+        self.assertIn("7812856", info["driftWarnings"][0])
+        self.assertIn("merging into existing", info["driftWarnings"][0])
+
     def test_expire_only_when_pagination_complete(self):
         from network_jobs.corpus import merge_jobs, write_shards
 

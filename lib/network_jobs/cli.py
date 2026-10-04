@@ -113,11 +113,12 @@ _DESCRIPTION_FIELDS = ("description", "descriptionFetchedAt", "descriptionSource
 def _row_keys(job: dict[str, Any], company: str) -> list[str]:
     """Every plausible identity for a row, most specific first.
 
-    `fingerprint()` short-circuits on an existing `fingerprint` field, so
-    the same job may arrive keyed with or without the company segment.
-    Both spellings plus the raw ATS id are offered so a join does not
-    silently miss when `--company` differs from the run that wrote the
-    file.
+    `fingerprint()` short-circuits on an existing `fingerprint` field.
+    Since #25, fingerprint no longer includes the company segment — it is
+    `id:{atsId}` or `fp:{hash(company+title+location)}` from job data.
+    The join tries: stored fingerprint, computed fingerprint (ignores CLI
+    company), then raw ATS id. This handles both old and new fingerprint
+    spellings.
     """
     keys: list[str] = []
     stored = job.get("fingerprint")
@@ -149,15 +150,12 @@ def _rehydrate_descriptions(
     matcher sees them.
 
     Joining is deliberately forgiving. A row that already carries a
-    `fingerprint` keeps it verbatim (`fingerprint()` returns it unchanged),
-    so the stored key depends on whether the run that produced the file
-    passed `--company`: the same job can be keyed `id:stripe:7812856` or
-    `id::7812856`. Keying the join on one spelling made this silently
-    restore 0 — and a corpus re-ingest then duplicated every job, because
-    the new batch was written under a different key. So try the stored
-    fingerprint, then both spellings, then the ATS id when it is
-    unambiguous. Rows that genuinely have no prior body are left
-    undescribed, which is the honest state.
+    `fingerprint` keeps it verbatim (`fingerprint()` returns it unchanged).
+    Since #25, fingerprint no longer includes the company segment, so the
+    stored key is stable regardless of `--company`. The join uses
+    `_row_keys` which tries: stored fingerprint, computed fingerprint,
+    then raw ATS id. This handles both old (pre-#25) and new fingerprint
+    spellings. Rows that genuinely have no prior body are left undescribed.
     """
     prior = _load_json(matches_path, None)
     rows = prior.get("jobs") if isinstance(prior, dict) else prior
@@ -820,6 +818,7 @@ def cmd_rebuild(args: argparse.Namespace) -> int:
         "expiredCount": summary.get("expiredCount", 0),
         "expirySkipped": summary.get("expirySkipped", False),
         "expiryReason": summary.get("expiryReason", ""),
+        "driftWarnings": summary.get("driftWarnings", []),
         "paginationComplete": summary.get("paginationComplete", False),
     }, args.verbose)
     return 0
