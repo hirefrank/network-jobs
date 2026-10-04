@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- `classify` now accepts a `{"jobs": [...]}` envelope as well as a bare array.
+  `match-pregs` writes the envelope and `fetch-descriptions` writes the bare
+  array, so the documented order (`match-prefs` → `classify`) previously failed
+  with `input must be a JSON array` and had to be un-wrapped by hand. Genuinely
+  unrecognised shapes still exit 1.
+
+### Changed
+- `CHANGELOG.md` is now included in the published npm tarball, and the README
+  links to it. Release notes previously shipped to the repo but not to anyone
+  installing from npm — which is the only channel most users get.
+
 ## v1.6.1 — 2026-10-04
 
 Data-integrity fixes (#24, #25).
