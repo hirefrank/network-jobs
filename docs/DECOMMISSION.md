@@ -19,14 +19,7 @@ https://github.com/hirefrank/biz/blob/main/apps/jobs/SUNSET.md
   Confirm their scripts/agents either (a) surface the migration message to the
   user, or (b) auto-install the local suite via the `install` hint.
 
-- [ ] **Data export one-liner** (run per advisor, writes to local suite):
-  ```bash
-  wrangler d1 export advisor-jobs-db --remote \
-    | sqlite3 -json - ".mode json" \
-    | jq '.[] | select(.table=="advisor_prefs" or .table=="saved_searches")' \
-    > ~/.network-jobs/advisor-export-$(date +%F).json
-  ```
-  Verify the JSON loads in `network-jobs import --advisor-data <file>`.
+- [x] **D1 full export** (2026-10-04): `hirefrank/biz` → `apps/jobs/exports/advisor-jobs-db-2026-10-04.sql` (~1.5 GB, gitignored). Upload to Google Drive before deleting D1. There is no automatic importer into `~/.network-jobs/` — advisors reinstall via `network-jobs setup` + LinkedIn ZIP import.
 
 - [ ] **Secrets audit**: List all `jobs-api` secrets and bindings:
   ```bash
