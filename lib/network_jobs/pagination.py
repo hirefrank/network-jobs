@@ -524,17 +524,39 @@ def _numeric_total(value: Any) -> int | None:
     return None
 
 
+def _case_insensitive_total(obj: dict[str, Any], key: str) -> int | None:
+    """The numeric value of `key` on `obj`, matching case-insensitively.
+
+    Skips junk values so a `"Count": "n/a"` beside a real `"COUNT": 25`
+    does not hide the total; booleans and non-numeric strings are not
+    counts (see `_numeric_total`).
+    """
+    want = key.lower()
+    for name, value in obj.items():
+        if isinstance(name, str) and name.lower() == want:
+            total = _numeric_total(value)
+            if total is not None:
+                return total
+    return None
+
+
 def _explicit_count_value(obj: Any) -> int | None:
     """The first explicit total on `obj`, or None.
 
     Explicit means `total`/`totalFound`/`totalCount`/`total_results`, not a
     bare `count`. A count can be a page size or facet count; keeping it out of
     this helper lets the caller treat a lone page-sized count as ambiguous.
+    Exact names first, then case-variant names in the same order (#80), so
+    an explicit `Total` still beats any bare `count`.
     """
     if not isinstance(obj, dict):
         return None
     for key in ("total", "totalFound", "totalCount", "total_results"):
         total = _numeric_total(obj.get(key))
+        if total is not None:
+            return total
+    for key in ("total", "totalFound", "totalCount", "total_results"):
+        total = _case_insensitive_total(obj, key)
         if total is not None:
             return total
     return None
@@ -546,21 +568,33 @@ def _count_value(obj: Any) -> int | None:
     Digit strings are accepted because a few APIs send `"count": "100"`.
     An explicit total sorts first; a bare `count` is the last resort because
     it is the most ambiguous key (page size, facet count, row total).
+    Precedence: exact explicit keys, case-variant explicit keys, exact
+    bare `count`, case-variant bare `count` (#80).
     """
     if not isinstance(obj, dict):
         return None
     total = _explicit_count_value(obj)
     if total is not None:
         return total
-    return _numeric_total(obj.get("count"))
+    total = _numeric_total(obj.get("count"))
+    if total is not None:
+        return total
+    return _case_insensitive_total(obj, "count")
 
 
 def _meta_total(obj: Any) -> int | None:
-    """A `total`/`totalCount`/`totalFound` on a meta/pagination block."""
+    """A `total`/`totalCount`/`totalFound` on a meta/pagination block.
+
+    Exact names first, then case-variant names in the same order (#80).
+    """
     if not isinstance(obj, dict):
         return None
     for key in ("total", "totalCount", "totalFound"):
         total = _numeric_total(obj.get(key))
+        if total is not None:
+            return total
+    for key in ("total", "totalCount", "totalFound"):
+        total = _case_insensitive_total(obj, key)
         if total is not None:
             return total
     return None
@@ -586,6 +620,21 @@ def _explicit_top_level_total(payload: Any) -> int | None:
                 total = _numeric_total(nested.get(name))
                 if total is not None:
                     explicit.append(total)
+    if explicit:
+        return max(explicit)
+    # No exact explicit total: case-variant explicit totals (#80) still
+    # beat any bare count, in either case.
+    for key in ("total", "totalFound", "totalCount", "total_results"):
+        total = _case_insensitive_total(payload, key)
+        if total is not None:
+            explicit.append(total)
+    for key in ("meta", "pagination"):
+        nested = payload.get(key)
+        if isinstance(nested, dict):
+            for name in ("total", "totalCount", "totalFound"):
+                total = _case_insensitive_total(nested, name)
+                if total is not None:
+                    explicit.append(total)
     return max(explicit) if explicit else None
 
 
@@ -593,14 +642,21 @@ def _top_level_total(payload: Any) -> int | None:
     """A board total on the payload or its meta block (detect_next's rule).
 
     Explicit totals anywhere beat a bare `count`, and the largest explicit
-    total wins across the payload/meta. A `count` on the payload is the last
-    resort because it is frequently a page size or facet count. This also
-    keeps a digit-string `count` from shadowing a real `meta.total`.
+    total wins across the payload/meta within its case tier. A `count` on the
+    payload is the last resort because it is frequently a page size or facet
+    count. This also keeps a digit-string `count` from shadowing a real
+    `meta.total`. Precedence for the bare-count fallback: exact `count`,
+    then case-variant `count` (#80).
     """
     total = _explicit_top_level_total(payload)
     if total is not None:
         return total
-    return _numeric_total(payload.get("count")) if isinstance(payload, dict) else None
+    if not isinstance(payload, dict):
+        return None
+    total = _numeric_total(payload.get("count"))
+    if total is not None:
+        return total
+    return _case_insensitive_total(payload, "count")
 
 
 def _rows_envelope(payload: Any, rows: list[Any]) -> dict[str, Any] | None:
