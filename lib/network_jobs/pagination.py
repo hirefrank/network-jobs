@@ -116,6 +116,56 @@ DEFAULT_MAX_PAGES = 15
 DEFAULT_PAGE_SIZE = 50
 DEFAULT_MAX_LISTINGS = 2000
 
+# Query/body keys that narrow a board rather than select a page. A crawl with
+# one of these set is `filtered` and must not expire roles outside the filter
+# (#90). `domain`/`tenant`/`site`/`company` are scope, not filters; paging
+# keys (`page`, `offset`, `start`, `limit`, ...) are not filters. `from` is
+# deliberately absent: it can be an offset alias and #78/#72 own it.
+FILTER_QUERY_KEYS = frozenset({
+    "q", "query", "search", "searchtext", "search_text", "keyword", "keywords",
+    "location", "locations", "city", "region", "country", "radius", "distance",
+    "department", "departments", "team", "category", "jobfunction",
+    "job_function", "jobfamily", "job_family", "jobfamilygroup",
+    "job_family_group", "facets", "filter", "filters", "skill", "skills",
+    "title", "role", "level", "seniority", "remote", "workplace",
+    "employmenttype", "employment_type", "postedafter", "posted_after",
+    "startdate", "start_date", "salary",
+})
+FILTER_BODY_KEYS = FILTER_QUERY_KEYS | frozenset({
+    "appliedfacets", "applied_facets", "workertype", "worker_type",
+    "timetype", "time_type", "jobprofile", "job_profile",
+})
+
+
+def _filter_value_set(value: Any) -> bool:
+    """True when a filter key carries a real value (not None/empty)."""
+    if isinstance(value, bool):
+        # Even `remote: false` is a constraint, not an absent filter.
+        return True
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (dict, list, tuple, set)):
+        return bool(value)
+    return value is not None
+
+
+def has_request_filter(url: str, body: Any = None) -> bool:
+    """Whether a crawl URL/body carries a query/location-style filter.
+
+    Used only to mark `pagination.json` (`filtered: true`) so ingest can skip
+    expiry; it is not used to change paging. Path-only filters are not
+    detectable here; the `paginate --filtered` flag covers those.
+    """
+    if url:
+        for key, value in parse_qsl(urlsplit(url).query, keep_blank_values=True):
+            if key.lower() in FILTER_QUERY_KEYS and value.strip():
+                return True
+    if isinstance(body, dict):
+        for key, value in body.items():
+            if str(key).lower() in FILTER_BODY_KEYS and _filter_value_set(value):
+                return True
+    return False
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -908,6 +958,7 @@ def paginate(
     headers: dict[str, str] | None = None,
     body: dict[str, Any] | None = None,
     body_offset_key: str = "offset",
+    filtered: bool = False,
 ) -> dict[str, Any]:
     """Follow pagination into a result dict.
 
@@ -923,6 +974,10 @@ def paginate(
     `capture=True` marks a `paginate --input` run: the rows came from a single
     page a human saved, so the run can never prove the board is complete. It
     always records `complete: false` / `status: "captured"` (#39).
+
+    `filtered=True`, or a query/body filter key detected by
+    `has_request_filter`, adds `"filtered": true` to `pagination` so ingest
+    refuses expiry on a filtered view (#90); it does not change paging.
 
     POST/JSON-body boards (#74, e.g. Workday CXS) are a request
     descriptor, not an adapter: pass `method="POST"` (a `body` without
@@ -940,6 +995,7 @@ def paginate(
     post_mode = method.upper() != "GET" or body is not None
     if post_mode and method.upper() == "GET":
         method = "POST"
+    filtered = filtered or has_request_filter(url or "", body)
     post_body: dict[str, Any] | None = None
     if post_mode:
         post_body = dict(body) if isinstance(body, dict) else {}
@@ -1319,6 +1375,8 @@ def paginate(
         "maxPages": max_pages,
         "status": status,
     }
+    if filtered:
+        pagination["filtered"] = True
     if reported_total is not None:
         pagination["reportedTotal"] = reported_total
     pagination["rowsFetched"] = raw_seen

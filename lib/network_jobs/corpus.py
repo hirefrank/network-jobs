@@ -105,16 +105,20 @@ def merge_jobs(
     pagination_complete: bool = False,
     pagination_status: str | None = None,
     expected_total: int | None = None,
+    delta_only: bool = False,
+    filtered: bool = False,
     force_expire: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Merge incoming into existing by fingerprint.
 
     Expiry closes unseen jobs for expire_company only when the batch can
     plausibly be the whole board: pagination must be complete AND (when
-    expected_total is known) the incoming fingerprint set must cover it.
-    A matches-only batch over a bigger board skips expiry loudly instead of
-    silently closing live roles (#16) — pass force_expire only when you know
-    the batch is the full board despite a smaller count.
+    expected_total is known) the incoming fingerprints for that company must
+    cover it. The count is scoped to expire_company, so rows for another
+    company in the same batch cannot satisfy this company's expected total
+    (#90). A matches-only batch over a bigger board skips expiry loudly
+    instead of silently closing live roles (#16) — pass force_expire only
+    when you know the batch is the full board despite a smaller count.
 
     `pagination_status` is the crawl headline from `index/pagination.json`.
     `blocked` (unreadable board) and `captured` (user-saved page) can never
@@ -128,6 +132,16 @@ def merge_jobs(
     "null", or `empty`). A filtered or region-limited crawl URL can look
     empty and would otherwise wipe the company. A company that already had
     zero open roles may record empty.
+
+    `delta_only` marks a new/updated-only batch (a delta). A delta is not
+    evidence the board closed: expiry is always skipped, even when the
+    incoming count covers `expected_total`, and `force_expire` does not
+    override it. Re-ingest the full classified board to expire unseen roles.
+
+    `filtered` marks a crawl whose query/location filter may not cover the
+    company. Expiry is skipped unless `force_expire` is set; that override
+    is the operator asserting the filter covers every role on the board.
+    The CLI/helper sets it from `index/pagination.json` (`filtered: true`).
 
     Fingerprint drift detection (#25): if an incoming job's externalId matches
     an existing job under a different fingerprint, we merge into the existing
@@ -143,6 +157,10 @@ def merge_jobs(
         if ext:
             by_ext[str(ext)] = fp
     seen: set[str] = set()
+    # Count only rows that belong to the company we may expire (#90). The
+    # whole-batch `seen` set can be padded by another company's rows and
+    # satisfy a per-company expected_total by accident.
+    seen_for_company: set[str] = set()
     today = _today()
     drift_warnings: list[str] = []
     for job in incoming:
@@ -182,9 +200,19 @@ def merge_jobs(
         by_fp[fp] = merged
         if ext:
             by_ext[str(ext)] = fp
+        if expire_company and _matches_expire_company(job, expire_company):
+            seen_for_company.add(fp)
 
     info: dict[str, Any] = {"expired": 0, "expirySkipped": False, "expiryReason": "", "driftWarnings": drift_warnings}
-    if expire_company and pagination_status in NO_EXPIRY_STATUSES:
+    if expire_company and delta_only:
+        # A delta (new/updated rows only) is not evidence that unseen roles
+        # closed. Hard skip: force_expire cannot turn a delta into a board.
+        info["expirySkipped"] = True
+        info["expiryReason"] = (
+            "delta-only batch (new/updated rows only) is not a full board: "
+            "expiry skipped by design; re-ingest the full classified board "
+            "without --delta to expire unseen roles")
+    elif expire_company and pagination_status in NO_EXPIRY_STATUSES:
         # Never expire from an unreadable board or a user capture — not even
         # with force_expire, because those rows are not evidence a role closed.
         info["expirySkipped"] = True
@@ -192,6 +220,16 @@ def merge_jobs(
             f"pagination status={pagination_status} is not evidence that roles "
             "closed (blocked = unreadable board, captured = user-saved page): "
             "expiry skipped")
+    elif expire_company and filtered and not force_expire:
+        # A filtered crawl (query/location) reports a filtered total, so
+        # covering it does not prove roles outside the filter closed. The
+        # operator can override with --force-expire when the filter is known
+        # to cover every role for this company.
+        info["expirySkipped"] = True
+        info["expiryReason"] = (
+            "filtered crawl (query/location filter is not known to cover the "
+            "company): expiry skipped (pass --force-expire only if the "
+            "filter covers every role)")
     elif (expire_company and pagination_status == "truncated"
           and pagination_complete and not force_expire):
         # A model that passes --pagination-complete anyway must not open the
@@ -220,12 +258,13 @@ def merge_jobs(
                 "expiry skipped (a filtered or region-limited URL can look "
                 "empty; pass --force-expire if every role really closed)")
         elif (expected_total is not None and not force_expire
-                and len(seen) < expected_total):
+                and len(seen_for_company) < expected_total):
             info["expirySkipped"] = True
             info["expiryReason"] = (
-                f"incoming {len(seen)} fingerprints < expected board "
-                f"{expected_total}: treating batch as filtered; expiry skipped "
-                "(pass force_expire to override)")
+                f"incoming {len(seen_for_company)} fingerprints for "
+                f"{expire_company} < expected board {expected_total}: treating "
+                "batch as filtered; expiry skipped (pass force_expire to "
+                "override)")
         else:
             for fp, job in list(by_fp.items()):
                 if fp in seen:
@@ -323,8 +362,17 @@ def rebuild(
     pagination_complete: bool = False,
     pagination_status: str | None = None,
     expected_total: int | None = None,
+    delta_only: bool = False,
+    filtered: bool = False,
     force_expire: bool = False,
 ) -> dict[str, Any]:
+    """Merge a batch into the corpus and rewrite shards.
+
+    Expiry safety rules live in `merge_jobs`: the batch must cover the
+    company-scoped expected count, must not be a delta-only ingest, and must
+    not come from a filtered crawl unless `force_expire` asserts the filter
+    covers the company.
+    """
     incoming = load_jobs(incoming_path)
     existing = load_existing_jobs(corpus)
     jobs, merge_info = merge_jobs(
@@ -334,6 +382,8 @@ def rebuild(
         pagination_complete=pagination_complete,
         pagination_status=pagination_status,
         expected_total=expected_total,
+        delta_only=delta_only,
+        filtered=filtered,
         force_expire=force_expire,
     )
     summary = write_shards(corpus, jobs)
@@ -349,6 +399,8 @@ def rebuild(
     summary["expireCompany"] = expire_company or ""
     summary["paginationComplete"] = pagination_complete
     summary["paginationStatus"] = pagination_status or ""
+    summary["deltaOnly"] = delta_only
+    summary["filtered"] = filtered
     # Semantic cache: embed only new/changed jobs; no-op when no provider.
     summary["embeddings"] = maybe_update_embeddings(corpus, jobs)
     return summary

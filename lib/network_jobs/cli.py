@@ -880,12 +880,17 @@ def cmd_paginate(args: argparse.Namespace) -> int:
             headers=headers or None,
             body=body,
             body_offset_key=getattr(args, "body_offset_key", "offset") or "offset",
+            filtered=getattr(args, "filtered", False),
         )
     except OSError as exc:
         # Dead URL / refused connection: a readable `blocked` result beats a
         # traceback with no pagination.json (#39).
         result = blocked_result(url or "", f"{type(exc).__name__}: {exc}",
                                 max_pages=args.max_pages)
+    if getattr(args, "filtered", False):
+        # A path-only filter cannot be seen in the query/body; keep the
+        # explicit operator/model marker even for a blocked crawl (#90).
+        result.setdefault("pagination", {})["filtered"] = True
     quiet = write_pagination(Path(args.triage_dir), result, company=args.company or "")
     _dump(quiet, args.verbose)
     return 0
@@ -903,6 +908,8 @@ def cmd_rebuild(args: argparse.Namespace) -> int:
         pagination_complete=complete,
         pagination_status=args.pagination_status,
         expected_total=args.expect_count,
+        delta_only=args.delta_only,
+        filtered=args.filtered,
         force_expire=args.force_expire,
     )
     if summary.get("expirySkipped") and summary.get("expiryReason"):
@@ -1311,6 +1318,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="extra request header 'Name: value' (repeatable)")
     g.add_argument("--body-offset-key", default="offset",
                    help="JSON body key stepped per POST page (default: offset)")
+    g.add_argument("--filtered", action="store_true",
+                   help="mark this crawl as filtered (path-only filters); ingest will skip expiry")
     g.set_defaults(func=cmd_paginate)
 
     b = sub.add_parser("rebuild", help="merge batch into corpus by fingerprint")
@@ -1323,6 +1332,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="status from index/pagination.json: blocked/captured never expire; truncated unless --force-expire")
     b.add_argument("--expect-count", type=int, default=None,
                    help="board listing count: skip expiry when the batch is a strict subset (filtered ingest)")
+    b.add_argument("--delta", dest="delta_only", action="store_true",
+                   help="new/updated-only batch: never expire (re-ingest the full board to expire)")
+    b.add_argument("--filtered", action="store_true",
+                   help="filtered crawl (query/location): skip expiry unless --force-expire asserts the filter covers the company")
     b.add_argument("--force-expire", action="store_true",
                    help="expire even on a subset batch or an empty crawl that "
                         "would drop prior open roles (operator override)")
