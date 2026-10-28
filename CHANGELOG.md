@@ -95,6 +95,10 @@
   (#79), and `companies` / `refresh` print a coverage line for
   truncated/blocked boards (e.g. `coverage: 20 of 100 (truncated)`).
   Older company records without those fields stay readable.
+- `lastPagination` also carries #90's `filtered` flag, and
+  `companies` / `refresh` show `(complete, filtered)` or
+  `(truncated, filtered)` so a filtered view is never mistaken for the
+  whole company.
 - Board totals now match case-insensitively (#80): an API sending
   `Total` or `Count` is no longer treated as having no total, so an
   Eightfold-shaped board can no longer stop after one page and report

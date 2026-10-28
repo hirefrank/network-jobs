@@ -96,6 +96,11 @@ def stamp_company_crawl(
         for key in ("status", "reportedTotal", "rowsFetched", "deduped"):
             if pagination.get(key) is not None:
                 row["lastPagination"][key] = pagination.get(key)
+        if pagination.get("filtered"):
+            # #90: a filtered view is expiry-relevant; keep it in the company
+            # record alongside the coverage fields (only when true, so old
+            # records keep their shape).
+            row["lastPagination"]["filtered"] = True
     companies_path.parent.mkdir(parents=True, exist_ok=True)
     companies_path.write_text(json.dumps(companies, indent=2, ensure_ascii=False) + "\n")
     status["lastCrawl"] = row["lastCrawl"]
