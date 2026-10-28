@@ -1494,6 +1494,77 @@ class EnvelopeOffsetPaginationTests(unittest.TestCase):
                                                extract_job_list(beside), last_count=5))
 
 
+class CaseVariantTotalTests(unittest.TestCase):
+    """#80: total keys match case-insensitively, after the exact-name pass."""
+
+    @staticmethod
+    def _fetch(builder):
+        def fake_fetch(url):
+            import json as _json
+            from urllib.parse import parse_qsl, urlsplit
+            q = dict(parse_qsl(urlsplit(url).query))
+            body = builder(q)
+            return body, 200, _json.dumps(body).encode()
+        return fake_fetch
+
+    def test_case_variant_count_follows_start_to_total(self):
+        from network_jobs.pagination import paginate
+        rows = [{"id": i, "name": f"Engineer {i}", "location": "NY",
+                 "positionUrl": f"/job/{i}"} for i in range(25)]
+
+        def build(q):
+            start = int(q.get("start", "0"))
+            return {"data": {"positions": rows[start:start + 10], "Count": 25}}
+
+        result = paginate("https://x.io/api/search?start=0", fetch=self._fetch(build),
+                          max_pages=10)
+        self.assertEqual(len(result["listings"]), 25)
+        self.assertEqual(result["pagination"]["reportedTotal"], 25)
+        self.assertTrue(result["pagination"]["complete"])
+
+    def test_bare_count_does_not_beat_explicit_total(self):
+        from network_jobs.pagination import _count_value, paginate
+        self.assertEqual(_count_value({"Total": 25, "count": 10}), 25)
+        self.assertEqual(_count_value({"total": 25, "Count": 10}), 25)
+        self.assertEqual(_count_value({"count": 10, "COUNT": 25}), 10)
+        rows = [{"id": i, "name": f"Engineer {i}", "location": "NY",
+                 "positionUrl": f"/job/{i}"} for i in range(25)]
+
+        def build(q):
+            start = int(q.get("start", "0"))
+            return {"data": {"positions": rows[start:start + 10],
+                             "Total": 25, "count": 10}}
+
+        result = paginate("https://x.io/api/search?start=0", fetch=self._fetch(build),
+                          max_pages=10)
+        self.assertEqual(len(result["listings"]), 25)
+        self.assertEqual(result["pagination"]["reportedTotal"], 25)
+
+    def test_case_variant_meta_total_and_junk_excluded(self):
+        from network_jobs.pagination import _count_value, paginate
+        self.assertIsNone(_count_value({"Count": True}))
+        self.assertIsNone(_count_value({"Count": "n/a"}))
+        self.assertEqual(_count_value({"Count": "25"}), 25)
+        rows = [{"id": i, "name": f"Engineer {i}", "location": "NY",
+                 "positionUrl": f"/job/{i}"} for i in range(25)]
+
+        def build(q):
+            start = int(q.get("start", "0"))
+            return {"data": {"positions": rows[start:start + 10],
+                             "meta": {"Total": 25}}}
+
+        result = paginate("https://x.io/api/search?start=0", fetch=self._fetch(build),
+                          max_pages=10)
+        self.assertEqual(len(result["listings"]), 25)
+        self.assertEqual(result["pagination"]["reportedTotal"], 25)
+
+    def test_exact_key_behavior_unchanged(self):
+        from network_jobs.pagination import _count_value
+        self.assertEqual(_count_value({"total": 100, "count": 10}), 100)
+        self.assertEqual(_count_value({"totalFound": 40, "count": 10}), 40)
+        self.assertIsNone(_count_value({"total": True, "count": "x"}))
+
+
 class SetQueryTests(unittest.TestCase):
     """#77: page URLs must keep repeated query parameters."""
 

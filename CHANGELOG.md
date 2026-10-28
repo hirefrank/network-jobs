@@ -95,6 +95,13 @@
   (#79), and `companies` / `refresh` print a coverage line for
   truncated/blocked boards (e.g. `coverage: 20 of 100 (truncated)`).
   Older company records without those fields stay readable.
+- Board totals now match case-insensitively (#80): an API sending
+  `Total` or `Count` is no longer treated as having no total, so an
+  Eightfold-shaped board can no longer stop after one page and report
+  `complete` for want of a total. Exact names still win first, and an
+  explicit total (in either case) still beats a bare `count`; booleans
+  and non-numeric strings are still not counts, and the rule is scoped
+  to counts only — scheme-relevant keys are unchanged.
 
 ## v1.9.0 — 2026-10-22
 
