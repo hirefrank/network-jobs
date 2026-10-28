@@ -817,6 +817,13 @@ def detect_next_envelope(
     that fails normalization must not make the crawl re-read its neighbour.
     The paginate loop calls this after detect_next, and also uses it to
     replace an invented `offset=` on a start-paged board.
+
+    A `start` that is already at or past the board total can never be a
+    row offset into that board (#91: a year filter like `start=2020` on a
+    100-row board), so it declines here too. The stronger first-page
+    guard lives in `paginate`: envelope following is only allowed when
+    the crawl's first URL seeded `start=0` (or no `start` at all), because
+    a non-zero first-page `start` is indistinguishable from a filter.
     """
     if last_count == 0 or not rows:
         return None
@@ -824,7 +831,7 @@ def detect_next_envelope(
     if start is None:
         return None
     total = board_total(payload, rows)
-    if total is None:
+    if total is None or start >= total:
         return None
     next_start = start + len(rows)
     if next_start >= total:
@@ -1083,6 +1090,16 @@ def paginate(
         if q.get("offset", "").isdigit():
             offset = int(q["offset"])
     initial_page, initial_offset = page, offset
+    # #91: envelope following is only allowed when the crawl's first URL
+    # seeded `start=0` (or no `start`). A non-zero first-page `start` is
+    # indistinguishable from a numeric filter (`start=2020` as a year):
+    # a multiple-of-page-size check alone cannot tell them apart (2020
+    # is a multiple of a 10-row page), so the crawl must not promote
+    # such a seed to `start + page_size`. The rows it did fetch are
+    # kept, and the final mid-board gate reports it truncated. A real
+    # mid-board crawl (`start=20` of 25) is likewise left at one page,
+    # truncated, with its rows — never completed, never expanded.
+    envelope_allowed = initial_start is None or initial_start == 0
     raw_seen = 0
     reported_total: int | None = None
     saw_board_total = False
@@ -1181,7 +1198,7 @@ def paginate(
         if start_at is not None and page_total is not None:
             env_next = detect_next_envelope(
                 current, payload, raw_jobs, last_count=len(raw_jobs),
-            )
+            ) if envelope_allowed else None
             fallback_start = _start_offset(env_next) if env_next else None
             if fallback_start is not None and fallback_start > start_at:
                 start_fallback = (current or "", fallback_start)
@@ -1280,7 +1297,7 @@ def paginate(
         if start_mode and start_at is not None:
             env_next = detect_next_envelope(
                 current, payload, raw_jobs, last_count=last_count,
-            )
+            ) if envelope_allowed else None
             next_url, found = env_next, ("start" if env_next else "none")
         else:
             next_url, found = detect_next(
@@ -1293,7 +1310,7 @@ def paginate(
         if not next_url or next_url == current:
             env_next = detect_next_envelope(
                 current, payload, raw_jobs, last_count=last_count,
-            )
+            ) if envelope_allowed else None
             if env_next and env_next != current:
                 # Its own scheme name: detect_next's offset branch keys on
                 # scheme == "offset" and would otherwise invent an offset=
