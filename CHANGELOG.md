@@ -102,6 +102,17 @@
   explicit total (in either case) still beats a bare `count`; booleans
   and non-numeric strings are still not counts, and the rule is scoped
   to counts only — scheme-relevant keys are unchanged.
+- A numeric `start` filter is no longer promoted as a row offset
+  (#91): envelope following now requires the crawl's first URL to
+  seed `start=0` (or no `start`), because a non-zero first-page
+  `start` is indistinguishable from a year filter (`start=2020`, which
+  a multiple-of-page-size check alone cannot catch — 2020 is a
+  multiple of a 10-row page). A `start` at or past the board total
+  also declines in the envelope fallback. The seeded crawl keeps its
+  first-page rows and reports `truncated`, never `complete`; a real
+  mid-board crawl (`start=20` of 25) likewise stays truncated with
+  its rows, and a genuine year filter paging from `start=0` still
+  pages to completion.
 
 ## v1.9.0 — 2026-10-22
 

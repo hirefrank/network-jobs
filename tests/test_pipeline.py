@@ -1565,6 +1565,74 @@ class CaseVariantTotalTests(unittest.TestCase):
         self.assertIsNone(_count_value({"total": True, "count": "x"}))
 
 
+class StartFilterTests(unittest.TestCase):
+    """#91: a numeric `start` filter must not be promoted as a row offset."""
+
+    @staticmethod
+    def _fetch(builder):
+        def fake_fetch(url):
+            import json as _json
+            from urllib.parse import parse_qsl, urlsplit
+            q = dict(parse_qsl(urlsplit(url).query))
+            body = builder(q)
+            return body, 200, _json.dumps(body).encode()
+        return fake_fetch
+
+    def test_seeded_start_filter_is_not_promoted(self):
+        # Top-level envelope board, the promotion path: detect_next first
+        # invents `offset=` on the start=2020 URL, the server ignores the
+        # offset and re-serves the first page, and the old code then used
+        # the remembered start envelope to request start=2030 — an empty
+        # page for a year filter, not the board's next rows. With the
+        # first-page-seed guard, no start=2030 request is ever made:
+        # the crawl keeps its first-page rows and reports truncated.
+        from network_jobs.pagination import paginate
+        rows = [{"id": i, "name": f"Engineer {i}", "location": "NY",
+                 "positionUrl": f"/job/{i}"} for i in range(100)]
+
+        def build(q):
+            start = int(q.get("start", "0"))
+            if start == 2020:
+                return {"positions": rows[0:10], "count": 5000}
+            return {"positions": [], "count": 5000}
+
+        result = paginate("https://x.io/api/search?start=2020",
+                          fetch=self._fetch(build), max_pages=10)
+        urls = "".join(e["url"] for e in result["fetchLog"])
+        self.assertNotIn("start=2030", urls)
+        self.assertEqual(len(result["listings"]), 10)
+        self.assertFalse(result["pagination"]["complete"])
+        self.assertTrue(result["pagination"]["truncated"])
+        self.assertEqual(result["pagination"]["status"], "truncated")
+
+    def test_real_year_filter_with_zero_seed_pages_normally(self):
+        # A genuine year filter as its own param, paging from start=0,
+        # must still page to completion — the guard is about the seed,
+        # not about filtered boards.
+        from network_jobs.pagination import paginate
+        rows = [{"id": i, "name": f"Engineer {i}", "location": "NY",
+                 "positionUrl": f"/job/{i}"} for i in range(100)]
+
+        def build(q):
+            start = int(q.get("start", "0"))
+            return {"data": {"positions": rows[start:start + 10], "count": 100}}
+
+        result = paginate("https://x.io/api/search?year=2020&start=0",
+                          fetch=self._fetch(build), max_pages=15)
+        self.assertEqual(len(result["listings"]), 100)
+        self.assertTrue(result["pagination"]["complete"])
+        self.assertEqual(result["pagination"]["reportedTotal"], 100)
+
+    def test_start_at_or_past_total_declines_in_envelope(self):
+        from network_jobs.pagination import detect_next_envelope, extract_job_list
+        rows = [{"title": f"Eng {i}", "url": f"https://x.io/jobs/{i}",
+                 "location": "NY"} for i in range(10)]
+        beside = {"data": {"positions": rows, "count": 100}}
+        extracted = extract_job_list(beside)
+        self.assertIsNone(detect_next_envelope(
+            "https://x.io/api/jobs?start=2020", beside, extracted, last_count=10))
+
+
 class SetQueryTests(unittest.TestCase):
     """#77: page URLs must keep repeated query parameters."""
 
