@@ -62,10 +62,12 @@ python3 "$SUITE/skills/jobs-ingest/helpers/classify-listings.py" \
    **LLM only for `needsLlm` titles** (ambiguous lead/head/player-coach). Leave high-confidence rows alone.
    Fill `companyDomain` from the graph when known. Keep `salary` / `postedAt` only if present in triage.
 5. **Merge** into corpus via helper (required):
-   - Write the **new/updated jobs only** to a working file (e.g. `$DATA/corpus/.work/batch.json`)
+   - Write the chosen batch to a working file (e.g. `$DATA/corpus/.work/batch.json`).
+   - A batch of **new/updated jobs only** is a delta. Pass `--delta`; expiry is then skipped by design (a delta is not evidence that unseen roles closed, and `--force-expire` does not override it). To expire unseen roles, write the **full classified board batch** (every role on the board, including unchanged rows) and do not pass `--delta`.
    - Read `index/pagination.json` (or INVENTORY). Pass `--pagination-complete` **only** when `complete` is true **and** `status` is neither `blocked` nor `captured`, and **never** for a user-capture run (`status: captured`) — a blocked board captured zero rows because it could not be read, and a capture is one saved page, not the board; neither is evidence that roles closed. `status: truncated` behaves like `complete: false`; the helper also refuses expiry on it unless `--force-expire` is passed. `status: empty` is a clean, parsed board listing zero roles (`complete` is true, so `--expect-count 0` works). If the batch has **zero incoming rows** for that company and it already had any open corpus rows, rebuild **skips expiry** and warns — whatever the status (omitted, jq `null`, or `empty`). A filtered or region-limited URL can look empty. Pass `--force-expire` only when the board really closed every role. A company that had zero open rows can still record empty.
    - Pass `--pagination-status "$(jq -r '.status' "$TRIAGE/index/pagination.json")"` with every rebuild: the helper refuses expiry on `blocked` / `captured` even if `--pagination-complete` slipped through.
-   - Always pass `--expect-count` with the board's own size: `max(index/listings.json length, pagination.reportedTotal)` when `reportedTotal` is present, else the listings length. The listing count alone is self-referential — a crawl wrongly marked complete and its subset guard come from the same short set — while the board's reported total makes the guard bite. Do **not** subtract `deduped`: it also includes rows that normalization dropped, so subtracting it can make a short crawl look complete. A matches-only batch over a bigger board then **skips expiry loudly** instead of closing live roles; only `--force-expire` overrides (use when you know the board genuinely shrank).
+   - Always pass `--expect-count` with the board's own size: `max(index/listings.json length, pagination.reportedTotal)` when `reportedTotal` is present, else the listings length. The listing count alone is self-referential — a crawl wrongly marked complete and its subset guard come from the same short set — while the board's reported total makes the guard bite. Do **not** subtract `deduped`: it also includes rows that normalization dropped, so subtracting it can make a short crawl look complete. The guard counts only incoming fingerprints for `--expire-company`, so rows for another company in the same batch cannot satisfy this company's total. A matches-only batch over a bigger board then **skips expiry loudly** instead of closing live roles; only `--force-expire` overrides (use when you know the board genuinely shrank).
+   - Read `index/pagination.json` for `filtered` (older files may omit it; default false) and pass `--filtered` when true. A filtered crawl's query/location filter is not known to cover the company, so expiry is skipped. `--force-expire` is the explicit operator override: use it only when you know the filter covers every role for that company.
    - Run [`helpers/rebuild-corpus.sh`](helpers/rebuild-corpus.sh) on that file:
 
 ```bash
@@ -76,16 +78,28 @@ if [[ "$REPORTED" =~ ^[0-9]+$ ]] && (( REPORTED > EXPECT )); then
   EXPECT="$REPORTED"
 fi
 STATUS=$(jq -r '.status' "$TRIAGE/index/pagination.json")
+FILTERED=$(jq -r '.filtered // false' "$TRIAGE/index/pagination.json")
+FILTER_ARG=()
+if [[ "$FILTERED" == "true" ]]; then
+  FILTER_ARG=(--filtered)
+fi
+
+# Full classified board (not a delta): expiry may run.
 "$SUITE/skills/jobs-ingest/helpers/rebuild-corpus.sh" "$DATA/corpus/.work/batch.json" \
   --expire-company "$SLUG" --pagination-complete --expect-count "$EXPECT" \
-  --pagination-status "$STATUS"
+  --pagination-status "$STATUS" "${FILTER_ARG[@]}"
+# Delta (new/updated jobs only): expiry is always skipped.
+"$SUITE/skills/jobs-ingest/helpers/rebuild-corpus.sh" "$DATA/corpus/.work/batch.json" \
+  --expire-company "$SLUG" --pagination-complete --expect-count "$EXPECT" \
+  --pagination-status "$STATUS" --delta "${FILTER_ARG[@]}"
 # or, when truncated / incomplete / blocked / captured:
 "$SUITE/skills/jobs-ingest/helpers/rebuild-corpus.sh" "$DATA/corpus/.work/batch.json" \
-  --expire-company "$SLUG" --pagination-incomplete --pagination-status "$STATUS"
+  --expire-company "$SLUG" --pagination-incomplete --pagination-status "$STATUS" \
+  "${FILTER_ARG[@]}"
 ```
 
    - The helper **merges by fingerprint** with existing `corpus/jobs-all.json` (incoming wins, `firstSeen` kept), rewrites shards + manifest, and **deletes stale shard files**
-   - Unseen jobs for that company are marked `closed` **only** when `--pagination-complete` is set **and** the batch covers the expected board size **and** `--pagination-status` is not `blocked`/`captured`. Never expire on incomplete crawls, user-capture runs, or filtered batches. A batch with zero incoming rows for that company and prior open roles also skips expiry unless `--force-expire`, even if `--pagination-status` is omitted or `null`.
+   - Unseen jobs for that company are marked `closed` **only** when `--pagination-complete` is set, the batch is not `--delta`, the company's own rows cover the expected board size, `--pagination-status` is not `blocked`/`captured`, and the crawl is not `--filtered` (unless `--force-expire`). Never expire on incomplete crawls, user-capture runs, delta batches, or filtered batches. A batch with zero incoming rows for that company and prior open roles also skips expiry unless `--force-expire`, even if `--pagination-status` is omitted or `null`.
 6. **Report** incoming count, total after merge, removed stale shards; show `manifest.totalJobs` and `lastUpdated`. If rebuild set `expirySkipped`, tell the user expiry was skipped and quote `expiryReason` — do not present a zero-row ingest as a clean empty board.
 7. Leave triage dirs in place (do not delete unless user asks)
 
@@ -121,17 +135,23 @@ if [[ "$REPORTED" =~ ^[0-9]+$ ]] && (( REPORTED > EXPECT )); then
   EXPECT="$REPORTED"
 fi
 STATUS=$(jq -r '.status' "$TRIAGE/index/pagination.json")
+FILTERED=$(jq -r '.filtered // false' "$TRIAGE/index/pagination.json")
+FILTER_ARG=()
+if [[ "$FILTERED" == "true" ]]; then
+  FILTER_ARG=(--filtered)
+fi
+# Full classified board (not a delta); add --delta instead for new/updated-only rows.
 "$SUITE/skills/jobs-ingest/helpers/rebuild-corpus.sh" "$DATA/corpus/.work/batch.json" \
   --expire-company "$SLUG" --pagination-complete --expect-count "$EXPECT" \
-  --pagination-status "$STATUS"   # only if pagination.complete and status is not blocked/captured
+  --pagination-status "$STATUS" "${FILTER_ARG[@]}"   # only if pagination.complete and status is not blocked/captured
 ```
 
-The classify helper is deterministic. Only send `needsLlm` titles to the model. Rebuild merges by fingerprint, shards by category/location/seniority (hybrid jobs land in every `locationBuckets` shard), and closes unseen jobs for `--expire-company` **only** when `--pagination-complete` is set and the status is not `blocked`/`captured`. A zero-row batch with prior open roles also skips expiry unless `--force-expire`, even if status is omitted or `null`.
+The classify helper is deterministic. Only send `needsLlm` titles to the model. Rebuild merges by fingerprint, shards by category/location/seniority (hybrid jobs land in every `locationBuckets` shard), and closes unseen jobs for `--expire-company` **only** when `--pagination-complete` is set, the batch is the full classified board (no `--delta`), the company's own rows cover the expected count, the status is not `blocked`/`captured`, and the crawl is not `--filtered` (unless `--force-expire`). A zero-row batch with prior open roles also skips expiry unless `--force-expire`, even if status is omitted or `null`.
 
 ## Helpers
 
 - [`helpers/classify-listings.py`](helpers/classify-listings.py) — title/department → category, track, senioritySignals, locationBuckets
-- [`helpers/rebuild-corpus.sh`](helpers/rebuild-corpus.sh) — fingerprint merge + shards; expire only if pagination.complete and status is not `blocked`/`captured`; zero incoming rows with prior open roles needs `--force-expire`
+- [`helpers/rebuild-corpus.sh`](helpers/rebuild-corpus.sh) — fingerprint merge + shards; expire only if pagination.complete, the batch is not `--delta`, the company's rows cover the expected count, status is not `blocked`/`captured`, and the crawl is not `--filtered` (or `--force-expire`); zero incoming rows with prior open roles needs `--force-expire`
 
 ## Related
 

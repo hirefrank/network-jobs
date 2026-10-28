@@ -1897,6 +1897,214 @@ class FingerprintExpiryTests(unittest.TestCase):
         self.assertFalse(incomplete["expired"])
 
 
+class ExpectCountEdgeTests(unittest.TestCase):
+    """#90: expiry guards for mixed-company, delta, and filtered batches."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="nj-expect-"))
+        self.addCleanup(lambda: shutil.rmtree(self.tmp, ignore_errors=True))
+        self.corpus = self.tmp / "corpus"
+        self.corpus.mkdir()
+        os.environ["NETWORK_JOBS_HOME"] = str(self.tmp)
+
+    def tearDown(self):
+        os.environ.pop("NETWORK_JOBS_HOME", None)
+
+    def _job(self, **kw):
+        base = {
+            "title": "Senior Product Manager",
+            "company": "FatBoard",
+            "category": "product",
+            "location": "New York, NY",
+            "locationBucket": "nyc",
+            "seniority": "senior",
+            "url": "https://fatboard.example/jobs/1",
+            "status": "open",
+        }
+        base.update(kw)
+        return base
+
+    @staticmethod
+    def _statuses(jobs):
+        return {j["externalId"]: j.get("status", "open") for j in jobs}
+
+    def test_mixed_company_batch_cannot_satisfy_company_expected_total(self):
+        # One FatBoard row plus two OtherCo rows make the batch length 3.
+        # Before #90 that satisfied expected_total=3 and expired fb-2, even
+        # though FatBoard itself was short by two rows.
+        from network_jobs.corpus import merge_jobs
+
+        existing = [
+            self._job(externalId="fb-1", url="https://fatboard.example/jobs/1"),
+            self._job(title="Staff Engineer", externalId="fb-2",
+                      url="https://fatboard.example/jobs/2",
+                      category="engineering", seniority="senior"),
+        ]
+        incoming = [
+            self._job(externalId="fb-1", url="https://fatboard.example/jobs/1"),
+            self._job(company="OtherCo", externalId="oc-1",
+                      url="https://otherco.example/jobs/1"),
+            self._job(company="OtherCo", title="Staff Engineer", externalId="oc-2",
+                      url="https://otherco.example/jobs/2"),
+        ]
+        merged, info = merge_jobs(
+            existing, incoming, expire_company="FatBoard",
+            pagination_complete=True, expected_total=3)
+        self.assertTrue(info["expirySkipped"])
+        self.assertEqual(info["expired"], 0)
+        self.assertIn("incoming 1 fingerprints for FatBoard", info["expiryReason"])
+        self.assertIn("expected board 3", info["expiryReason"])
+        statuses = self._statuses(merged)
+        self.assertEqual(statuses["fb-1"], "open")
+        self.assertEqual(statuses["fb-2"], "open")
+
+    def test_delta_only_never_expires_even_on_full_coverage(self):
+        from network_jobs.corpus import merge_jobs
+
+        existing = [
+            self._job(externalId="fb-1", url="https://fatboard.example/jobs/1"),
+            self._job(title="Staff Engineer", externalId="fb-2",
+                      url="https://fatboard.example/jobs/2",
+                      category="engineering", seniority="senior"),
+        ]
+        incoming = [self._job(externalId="fb-1",
+                              url="https://fatboard.example/jobs/1")]
+        merged, info = merge_jobs(
+            existing, incoming, expire_company="FatBoard",
+            pagination_complete=True, expected_total=1, delta_only=True)
+        self.assertTrue(info["expirySkipped"])
+        self.assertEqual(info["expired"], 0)
+        self.assertIn("delta-only", info["expiryReason"])
+        self.assertIn("full classified board", info["expiryReason"])
+        self.assertEqual(self._statuses(merged)["fb-2"], "open")
+
+        # force_expire is not an override for a delta: it is not a board.
+        merged, info = merge_jobs(
+            existing, incoming, expire_company="FatBoard",
+            pagination_complete=True, expected_total=1, delta_only=True,
+            force_expire=True)
+        self.assertTrue(info["expirySkipped"])
+        self.assertEqual(info["expired"], 0)
+        self.assertEqual(self._statuses(merged)["fb-2"], "open")
+
+    def test_filtered_crawl_skips_expiry_unless_forced(self):
+        from network_jobs.corpus import merge_jobs
+
+        existing = [
+            self._job(externalId="fb-1", url="https://fatboard.example/jobs/1"),
+            self._job(title="Staff Engineer", externalId="fb-2",
+                      url="https://fatboard.example/jobs/2",
+                      category="engineering", seniority="senior"),
+        ]
+        incoming = [self._job(externalId="fb-1",
+                              url="https://fatboard.example/jobs/1")]
+
+        merged, info = merge_jobs(
+            existing, incoming, expire_company="FatBoard",
+            pagination_complete=True, expected_total=1, filtered=True)
+        self.assertTrue(info["expirySkipped"])
+        self.assertEqual(info["expired"], 0)
+        self.assertIn("filtered crawl", info["expiryReason"])
+        self.assertEqual(self._statuses(merged)["fb-2"], "open")
+
+        # --force-expire is the operator asserting the filter covers all rows.
+        merged, info = merge_jobs(
+            existing, incoming, expire_company="FatBoard",
+            pagination_complete=True, expected_total=1, filtered=True,
+            force_expire=True)
+        self.assertFalse(info["expirySkipped"])
+        self.assertEqual(info["expired"], 1)
+        self.assertEqual(self._statuses(merged)["fb-2"], "closed")
+
+        # filtered=False (the default) keeps the existing behavior.
+        merged, info = merge_jobs(
+            existing, incoming, expire_company="FatBoard",
+            pagination_complete=True, expected_total=1, filtered=False)
+        self.assertFalse(info["expirySkipped"])
+        self.assertEqual(info["expired"], 1)
+        self.assertEqual(self._statuses(merged)["fb-2"], "closed")
+
+    def test_expect_count_formula_max_listings_and_reported_total(self):
+        # Skill formula: max(index/listings.json length, reportedTotal).
+        # Four unique rows on a board that reported six must not expire.
+        from network_jobs.corpus import merge_jobs
+
+        incoming = [
+            self._job(externalId=f"fb-{i}",
+                      url=f"https://fatboard.example/jobs/{i}")
+            for i in range(1, 5)
+        ]
+        existing = list(incoming) + [
+            self._job(title="Old A", externalId="gone-a",
+                      url="https://fatboard.example/jobs/gone-a"),
+            self._job(title="Old B", externalId="gone-b",
+                      url="https://fatboard.example/jobs/gone-b"),
+        ]
+        expected = max(len(incoming), 6)
+        self.assertEqual(expected, 6)
+        merged, info = merge_jobs(
+            existing, incoming, expire_company="FatBoard",
+            pagination_complete=True, expected_total=expected)
+        self.assertTrue(info["expirySkipped"])
+        self.assertEqual(info["expired"], 0)
+        self.assertIn("incoming 4 fingerprints for FatBoard", info["expiryReason"])
+        self.assertIn("expected board 6", info["expiryReason"])
+        statuses = self._statuses(merged)
+        self.assertEqual(statuses["gone-a"], "open")
+        self.assertEqual(statuses["gone-b"], "open")
+
+        # The operator can still assert the board shrank.
+        merged, info = merge_jobs(
+            existing, incoming, expire_company="FatBoard",
+            pagination_complete=True, expected_total=expected, force_expire=True)
+        self.assertFalse(info["expirySkipped"])
+        self.assertEqual(info["expired"], 2)
+        statuses = self._statuses(merged)
+        self.assertEqual(statuses["gone-a"], "closed")
+        self.assertEqual(statuses["gone-b"], "closed")
+
+    def test_rebuild_and_cli_pass_delta_and_filtered(self):
+        from network_jobs.cli import build_parser
+        from network_jobs.corpus import rebuild
+
+        args = build_parser().parse_args(
+            ["rebuild", "batch.json", "--delta", "--filtered"])
+        self.assertTrue(args.delta_only)
+        self.assertTrue(args.filtered)
+
+        existing = [
+            self._job(externalId="fb-1", url="https://fatboard.example/jobs/1"),
+            self._job(title="Staff Engineer", externalId="fb-2",
+                      url="https://fatboard.example/jobs/2",
+                      category="engineering", seniority="senior"),
+        ]
+        (self.corpus / "jobs-all.json").write_text(json.dumps(existing) + "\n")
+        batch = self.tmp / "batch.json"
+        batch.write_text(json.dumps(
+            [self._job(externalId="fb-1",
+                       url="https://fatboard.example/jobs/1")]) + "\n")
+        filtered = rebuild(
+            batch, self.corpus, expire_company="FatBoard",
+            pagination_complete=True, expected_total=1, filtered=True)
+        self.assertTrue(filtered["expirySkipped"])
+        self.assertEqual(filtered["expiredCount"], 0)
+        self.assertIn("filtered crawl", filtered["expiryReason"])
+        self.assertTrue(filtered["filtered"])
+        jobs = json.loads((self.corpus / "jobs-all.json").read_text())
+        self.assertEqual(self._statuses(jobs)["fb-2"], "open")
+
+        summary = rebuild(
+            batch, self.corpus, expire_company="FatBoard",
+            pagination_complete=True, expected_total=1, delta_only=True)
+        self.assertTrue(summary["expirySkipped"])
+        self.assertEqual(summary["expiredCount"], 0)
+        self.assertIn("delta-only", summary["expiryReason"])
+        self.assertTrue(summary["deltaOnly"])
+        self.assertFalse(summary["filtered"])
+        jobs = json.loads((self.corpus / "jobs-all.json").read_text())
+        self.assertEqual(self._statuses(jobs)["fb-2"], "open")
+
+
 class ClassifierLocationTests(unittest.TestCase):
     def test_track_and_category_deterministic(self):
         from network_jobs.classify import classify_job

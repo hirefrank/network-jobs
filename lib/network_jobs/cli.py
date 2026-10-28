@@ -903,6 +903,8 @@ def cmd_rebuild(args: argparse.Namespace) -> int:
         pagination_complete=complete,
         pagination_status=args.pagination_status,
         expected_total=args.expect_count,
+        delta_only=args.delta_only,
+        filtered=args.filtered,
         force_expire=args.force_expire,
     )
     if summary.get("expirySkipped") and summary.get("expiryReason"):
@@ -1323,6 +1325,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="status from index/pagination.json: blocked/captured never expire; truncated unless --force-expire")
     b.add_argument("--expect-count", type=int, default=None,
                    help="board listing count: skip expiry when the batch is a strict subset (filtered ingest)")
+    b.add_argument("--delta", dest="delta_only", action="store_true",
+                   help="new/updated-only batch: never expire (re-ingest the full board to expire)")
+    b.add_argument("--filtered", action="store_true",
+                   help="filtered crawl (query/location): skip expiry unless --force-expire asserts the filter covers the company")
     b.add_argument("--force-expire", action="store_true",
                    help="expire even on a subset batch or an empty crawl that "
                         "would drop prior open roles (operator override)")
