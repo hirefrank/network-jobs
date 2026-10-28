@@ -3340,6 +3340,34 @@ class CrawlCoverageTests(unittest.TestCase):
         lp = json.loads(companies.read_text())[0]["lastPagination"]
         self.assertEqual(lp, {"pages": 1, "complete": True, "truncated": False})
 
+    def test_filtered_stamp_and_coverage_suffix(self):
+        from network_jobs.cli import _crawl_coverage_suffix
+        from network_jobs.crawl import stamp_company_crawl
+
+        tmp = Path(tempfile.mkdtemp(prefix="nj-cov-filtered-"))
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        companies = tmp / "companies.json"
+        companies.write_text("[]\n")
+        stamp_company_crawl(
+            companies, "acme", [{"title": "PM", "url": "https://x/1", "externalId": "1"}],
+            pagination={"pages": 2, "complete": True, "truncated": False,
+                        "status": "complete", "reportedTotal": 20,
+                        "rowsFetched": 20, "filtered": True},
+            company_name="Acme",
+        )
+        lp = json.loads(companies.read_text())[0]["lastPagination"]
+        self.assertTrue(lp["filtered"])
+        self.assertEqual(
+            _crawl_coverage_suffix(lp),
+            " — coverage: 20 of 20 (complete, filtered)")
+        self.assertEqual(
+            _crawl_coverage_suffix({**lp, "status": "truncated", "truncated": True}),
+            " — coverage: 20 of 20 (truncated, filtered)")
+        self.assertEqual(_crawl_coverage_suffix(
+            {"status": "complete", "truncated": False, "reportedTotal": 20,
+             "rowsFetched": 20}), "")
+        self.assertEqual(_crawl_coverage_suffix({"status": "complete"}), "")
+
     def test_companies_prints_coverage_for_truncated_and_reads_old_records(self):
         import io
         from contextlib import redirect_stdout
@@ -3356,6 +3384,12 @@ class CrawlCoverageTests(unittest.TestCase):
              "lastPagination": {"pages": 2, "complete": False, "truncated": True,
                                 "status": "truncated", "reportedTotal": 100,
                                 "rowsFetched": 20}},
+            {"name": "FilterCo", "normalized": "filterco", "slug": "filterco",
+             "domain": "", "connectionCount": 1, "people": [],
+             "lastCrawl": "2026-09-01T00:00:00Z",
+             "lastPagination": {"pages": 2, "complete": True, "truncated": False,
+                                "status": "complete", "reportedTotal": 20,
+                                "rowsFetched": 20, "filtered": True}},
         ]) + "\n")
         out = io.StringIO()
         with redirect_stdout(out):
@@ -3364,6 +3398,7 @@ class CrawlCoverageTests(unittest.TestCase):
         text = out.getvalue()
         self.assertIn("OldCo", text)
         self.assertIn("coverage: 20 of 100 (truncated)", text)
+        self.assertIn("coverage: 20 of 20 (complete, filtered)", text)
 
     def test_refresh_result_carries_last_pagination(self):
         from network_jobs.cli import _do_refresh
@@ -3376,7 +3411,7 @@ class CrawlCoverageTests(unittest.TestCase):
              "domain": "acme.com", "connectionCount": 5, "people": [],
              "lastCrawl": "2026-09-01T00:00:00Z",
              "listingSetHash": "stale-hash",
-             "jobsUrl": "https://jobs.example.com/acme.json"},
+             "jobsUrl": "https://jobs.example.com/acme.json?query=engineer"},
         ]) + "\n")
         (tmp / "preferences.json").write_text(json.dumps({}) + "\n")
         payload = {"jobs": [{"title": "Senior Backend Engineer", "department": "Engineering",
@@ -3388,8 +3423,10 @@ class CrawlCoverageTests(unittest.TestCase):
                               today="2026-09-20")
         self.assertEqual(results[0]["lastPagination"]["status"], "complete")
         self.assertEqual(results[0]["lastPagination"]["rowsFetched"], 1)
+        self.assertTrue(results[0]["lastPagination"]["filtered"])
         acme = json.loads((tmp / "companies" / "companies.json").read_text())[0]
         self.assertEqual(acme["lastPagination"]["status"], "complete")
+        self.assertTrue(acme["lastPagination"]["filtered"])
 
 
 class FetchDescriptionsTests(unittest.TestCase):

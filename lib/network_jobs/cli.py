@@ -450,6 +450,30 @@ def _fmt_salary(salary: Any) -> str:
     return text
 
 
+def _crawl_coverage_suffix(lp: dict[str, Any] | None) -> str:
+    """#79/#90: a compact coverage suffix for companies/refresh output.
+
+    Quiet when the crawl covered an unfiltered board. A filtered crawl is
+    never quiet even when its filtered total is covered, because it is still
+    a partial view for expiry purposes.
+    """
+    if not isinstance(lp, dict):
+        return ""
+    filtered = bool(lp.get("filtered"))
+    partial = bool(lp.get("truncated")) or lp.get("status") in ("truncated", "blocked")
+    if not partial and not filtered:
+        return ""
+    status = str(lp.get("status") or "truncated")
+    if filtered and "filtered" not in status:
+        status = f"{status}, filtered"
+    if lp.get("reportedTotal") is not None and lp.get("rowsFetched") is not None:
+        return (
+            f" — coverage: {lp.get('rowsFetched')} of "
+            f"{lp.get('reportedTotal')} ({status})"
+        )
+    return f" — coverage: {status}"
+
+
 def _fmt_age_days(age: int | None) -> str:
     if age is None:
         return ""
@@ -706,16 +730,11 @@ def cmd_companies(args: argparse.Namespace) -> int:
         if age:
             line += f" ({age})"
         line += f" — hash={digest} — {jobs_url}"
-        # #79: surface coverage only when the last crawl was partial, so
-        # complete boards stay quiet. Older records without lastPagination
-        # (or without these keys) simply print no coverage line.
+        # #79/#90: surface coverage when the last crawl was partial or
+        # filtered; an unfiltered complete board stays quiet. Older records
+        # without lastPagination (or without these keys) print no suffix.
         lp = c.get("lastPagination") if isinstance(c.get("lastPagination"), dict) else {}
-        if lp.get("truncated") or lp.get("status") in ("truncated", "blocked"):
-            status = lp.get("status") or "truncated"
-            if lp.get("reportedTotal") is not None and lp.get("rowsFetched") is not None:
-                line += f" — coverage: {lp.get('rowsFetched')} of {lp.get('reportedTotal')} ({status})"
-            else:
-                line += f" — coverage: {status}"
+        line += _crawl_coverage_suffix(lp)
         print(line)
     return 0
 
@@ -787,7 +806,8 @@ def _do_refresh(
             _pag = pres.get("pagination") if isinstance(pres.get("pagination"), dict) else {}
             _coverage = {
                 key: _pag.get(key)
-                for key in ("status", "reportedTotal", "rowsFetched", "deduped", "truncated", "complete")
+                for key in ("status", "reportedTotal", "rowsFetched", "deduped",
+                            "truncated", "complete", "filtered")
                 if _pag.get(key) is not None
             }
             listings_path = triage / "index" / "listings.json"
@@ -846,15 +866,9 @@ def cmd_refresh(args: argparse.Namespace) -> int:
         return 0
     for r in results:
         status = r["status"]
-        # #79: warn about a partial crawl on the refresh line itself.
+        # #79/#90: warn about a partial or filtered crawl on the refresh line.
         _lp = r.get("lastPagination") if isinstance(r.get("lastPagination"), dict) else {}
-        _cov = ""
-        if _lp.get("truncated") or _lp.get("status") in ("truncated", "blocked"):
-            _st = _lp.get("status") or "truncated"
-            if _lp.get("reportedTotal") is not None and _lp.get("rowsFetched") is not None:
-                _cov = f" — coverage: {_lp.get('rowsFetched')} of {_lp.get('reportedTotal')} ({_st})"
-            else:
-                _cov = f" — coverage: {_st}"
+        _cov = _crawl_coverage_suffix(_lp)
         if status == "unchanged":
             print(f"• {r['company']}: unchanged ({r['listings']} listings){_cov}")
         elif status == "changed":
