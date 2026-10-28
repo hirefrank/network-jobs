@@ -155,7 +155,7 @@ Aggregated company graph (connection counts + sample people):
     "lastCrawl": "2026-09-16T02:00:00Z",
     "listingSetHash": "a1b2c3d4e5f60789",
     "jobsUrl": "https://api.example.com/v1/jobs",
-    "lastPagination": { "pages": 4, "complete": true, "truncated": false }
+    "lastPagination": { "pages": 4, "complete": true, "truncated": false, "status": "complete", "reportedTotal": 25, "rowsFetched": 25 }
   }
 ]
 ```
@@ -167,6 +167,7 @@ Aggregated company graph (connection counts + sample people):
 - `domain` — filled later during careers discovery when known.
 - `people` — up to 10 sample connections (not the full roster). **Intro ranking joins `connections.json`**, not this sample.
 - `lastCrawl` / `listingSetHash` / `lastPagination` — crawl budget. If the listing-set hash matches, skip refresh/ingest (delta is empty). Stamp after a successful paginated extract. Caps: 15 API pages, 5 browser “load more” pages, 2000 listings.
+- `lastPagination` coverage fields (#79, additive): `status` (the `pagination.json` headline: `complete` / `truncated` / `empty` / `blocked` / `captured`), `reportedTotal` (board total when one was visible), `rowsFetched` (raw rows served, diagnostic — not unique listings), and `deduped` (raw rows minus unique staged listings, when positive). They are stamped only when present on the pagination dict; older company records without them stay readable, and `companies` / `refresh` print a coverage line only for truncated/blocked boards.
 
 ## Triage (careers-discover output)
 
