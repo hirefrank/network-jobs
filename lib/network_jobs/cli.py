@@ -880,12 +880,17 @@ def cmd_paginate(args: argparse.Namespace) -> int:
             headers=headers or None,
             body=body,
             body_offset_key=getattr(args, "body_offset_key", "offset") or "offset",
+            filtered=getattr(args, "filtered", False),
         )
     except OSError as exc:
         # Dead URL / refused connection: a readable `blocked` result beats a
         # traceback with no pagination.json (#39).
         result = blocked_result(url or "", f"{type(exc).__name__}: {exc}",
                                 max_pages=args.max_pages)
+    if getattr(args, "filtered", False):
+        # A path-only filter cannot be seen in the query/body; keep the
+        # explicit operator/model marker even for a blocked crawl (#90).
+        result.setdefault("pagination", {})["filtered"] = True
     quiet = write_pagination(Path(args.triage_dir), result, company=args.company or "")
     _dump(quiet, args.verbose)
     return 0
@@ -1313,6 +1318,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="extra request header 'Name: value' (repeatable)")
     g.add_argument("--body-offset-key", default="offset",
                    help="JSON body key stepped per POST page (default: offset)")
+    g.add_argument("--filtered", action="store_true",
+                   help="mark this crawl as filtered (path-only filters); ingest will skip expiry")
     g.set_defaults(func=cmd_paginate)
 
     b = sub.add_parser("rebuild", help="merge batch into corpus by fingerprint")

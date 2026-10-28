@@ -63,6 +63,13 @@
 - A link-paged offset board reads `offset`/`page` from the followed
   `next` URL before the next request. A later page with no link no
   longer rebuilds from a stale offset and stops short (#78).
+- `jobs-ingest` now scopes the expected count to the company being
+  expired (rows for another company in the same batch cannot satisfy
+  it), hard-skips expiry for a `--delta` (new/updated-only) batch, and
+  skips a `--filtered` crawl unless `--force-expire` explicitly asserts
+  the filter covers the company (#90). `pagination.json` records
+  `filtered: true` when the crawl URL/body carries a query/location
+  filter, or when `paginate --filtered` marks a path-only filter.
 - `paginate` now finds a board total one level deeper than the rows
   (Eightfold's `data.positions` plus `data.meta.total`) instead of only
   beside the list or at the top level. The total feeds `reportedTotal` and

@@ -789,6 +789,69 @@ class PaginationSafetyTests(unittest.TestCase):
         self.assertFalse(pag["truncated"])
         self.assertEqual(pag["reportedTotal"], 10)
 
+    def test_query_filter_marks_pagination_filtered(self):
+        from network_jobs.pagination import paginate
+        rows = self._rows(20)
+
+        def build(q):
+            page = int(q.get("page", "1"))
+            return {"jobs": rows[(page - 1) * 10:page * 10], "total": 20}
+
+        result = paginate("https://x.io/api/jobs?query=engineer&page=1",
+                          fetch=self._fetch(build), max_pages=10, page_size=10)
+        self.assertTrue(result["pagination"].get("filtered"))
+        self.assertEqual(len(result["listings"]), 20)
+
+    def test_location_filter_marks_pagination_filtered(self):
+        from network_jobs.pagination import paginate
+        rows = self._rows(10)
+        payload = {"jobs": rows, "total": 10}
+        result = paginate("https://x.io/api/jobs?location=US&location=CA",
+                          fetch=self._fetch(lambda q: payload),
+                          max_pages=5, page_size=50)
+        self.assertTrue(result["pagination"].get("filtered"))
+
+    def test_paging_params_are_not_filtered(self):
+        from network_jobs.pagination import paginate
+        rows = self._rows(20)
+
+        def build(q):
+            page = int(q.get("page", "1"))
+            return {"jobs": rows[(page - 1) * 10:page * 10], "total": 20}
+
+        result = paginate("https://x.io/api/jobs?page=1&limit=10",
+                          fetch=self._fetch(build), max_pages=10, page_size=10)
+        self.assertNotIn("filtered", result["pagination"])
+
+    def test_empty_filter_values_are_not_filtered(self):
+        from network_jobs.pagination import paginate
+        rows = self._rows(10)
+        payload = {"jobs": rows, "total": 10}
+        result = paginate("https://x.io/api/jobs?query=&location=",
+                          fetch=self._fetch(lambda q: payload),
+                          max_pages=5, page_size=50)
+        self.assertNotIn("filtered", result["pagination"])
+
+    def test_post_body_filter_marks_pagination_filtered(self):
+        from network_jobs.pagination import paginate
+        rows = self._rows(10)
+        payload = {"jobs": rows, "total": 10}
+        result = paginate(
+            "https://x.io/api/jobs", method="POST",
+            body={"appliedFacets": {"location": ["US"]}, "limit": 10,
+                  "offset": 0, "searchText": ""},
+            fetch=self._fetch(lambda q: payload), max_pages=5, page_size=10)
+        self.assertTrue(result["pagination"].get("filtered"))
+
+    def test_explicit_filtered_flag_marks_pagination_filtered(self):
+        from network_jobs.pagination import paginate
+        rows = self._rows(10)
+        payload = {"jobs": rows, "total": 10}
+        result = paginate("https://x.io/api/jobs?page=1",
+                          fetch=self._fetch(lambda q: payload),
+                          max_pages=5, page_size=50, filtered=True)
+        self.assertTrue(result["pagination"].get("filtered"))
+
     def test_bare_count_with_a_working_page_link_still_completes(self):
         from network_jobs.pagination import paginate
         rows = self._rows(20)
@@ -2071,6 +2134,10 @@ class ExpectCountEdgeTests(unittest.TestCase):
             ["rebuild", "batch.json", "--delta", "--filtered"])
         self.assertTrue(args.delta_only)
         self.assertTrue(args.filtered)
+        paginate_args = build_parser().parse_args(
+            ["paginate", "--url", "https://x.io/api/jobs",
+             "--triage-dir", "triage", "--filtered"])
+        self.assertTrue(paginate_args.filtered)
 
         existing = [
             self._job(externalId="fb-1", url="https://fatboard.example/jobs/1"),

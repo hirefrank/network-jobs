@@ -84,11 +84,12 @@ if [[ "$FILTERED" == "true" ]]; then
   FILTER_ARG=(--filtered)
 fi
 
+# Choose ONE:
 # Full classified board (not a delta): expiry may run.
 "$SUITE/skills/jobs-ingest/helpers/rebuild-corpus.sh" "$DATA/corpus/.work/batch.json" \
   --expire-company "$SLUG" --pagination-complete --expect-count "$EXPECT" \
   --pagination-status "$STATUS" "${FILTER_ARG[@]}"
-# Delta (new/updated jobs only): expiry is always skipped.
+# OR delta (new/updated jobs only): expiry is always skipped.
 "$SUITE/skills/jobs-ingest/helpers/rebuild-corpus.sh" "$DATA/corpus/.work/batch.json" \
   --expire-company "$SLUG" --pagination-complete --expect-count "$EXPECT" \
   --pagination-status "$STATUS" --delta "${FILTER_ARG[@]}"
