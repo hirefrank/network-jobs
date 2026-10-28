@@ -384,6 +384,19 @@ def _absolute(base: str, maybe: str) -> str:
     return urljoin(base, maybe)
 
 
+def _numeric_total(value: Any) -> int | None:
+    """A numeric total, accepting digit strings; booleans and junk are not."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if text.isascii() and text.isdigit():
+            return int(text)
+    return None
+
+
 def _count_value(obj: Any) -> int | None:
     """The first numeric total on `obj`, or None. Booleans are not counts.
 
@@ -395,32 +408,37 @@ def _count_value(obj: Any) -> int | None:
     if not isinstance(obj, dict):
         return None
     for key in TOTAL_KEYS:
-        value = obj.get(key)
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
-            return int(value)
-        if isinstance(value, str) and value.strip().isdigit():
-            return int(value.strip())
+        total = _numeric_total(obj.get(key))
+        if total is not None:
+            return total
     return None
 
 
 def _top_level_total(payload: Any) -> int | None:
-    """A board total on the payload or its meta block (detect_next's rule)."""
-    total = _count_value(payload)
-    if total is not None:
-        return total
+    """A board total on the payload or its meta block (detect_next's rule).
+
+    Explicit totals anywhere beat a bare `count`, and the largest explicit
+    total wins across the payload/meta. A `count` on the payload is the last
+    resort because it is frequently a page size or facet count. This also
+    keeps a digit-string `count` from shadowing a real `meta.total`.
+    """
     if not isinstance(payload, dict):
         return None
+    explicit: list[int] = []
+    for key in ("total", "totalFound", "totalCount", "total_results"):
+        total = _numeric_total(payload.get(key))
+        if total is not None:
+            explicit.append(total)
     for key in ("meta", "pagination"):
         nested = payload.get(key)
-        if not isinstance(nested, dict):
-            continue
-        for name in ("total", "totalCount", "totalFound"):
-            value = nested.get(name)
-            if isinstance(value, (int, float)) and not isinstance(value, bool):
-                return int(value)
-            if isinstance(value, str) and value.strip().isdigit():
-                return int(value.strip())
-    return None
+        if isinstance(nested, dict):
+            for name in ("total", "totalCount", "totalFound"):
+                total = _numeric_total(nested.get(name))
+                if total is not None:
+                    explicit.append(total)
+    if explicit:
+        return max(explicit)
+    return _numeric_total(payload.get("count"))
 
 
 def _rows_envelope(payload: Any, rows: list[Any]) -> dict[str, Any] | None:
@@ -449,17 +467,21 @@ def envelope_total(payload: Any, rows: list[Any]) -> int | None:
 def _start_offset(url: str) -> int | None:
     """The digit-valued `start` of a start-paged URL, else None.
 
-    None when the URL already pages by `page`/`pageNumber`/`offset`: those
-    params stay detect_next's, and `start` may just be a filter there.
+    None when the URL already pages by a real `page`/`pageNumber`/`offset`:
+    those params stay detect_next's, and `start` may just be a filter there.
+    Blank and zero values are decoys, not paging params.
     """
     q = dict(parse_qsl(urlsplit(url).query, keep_blank_values=True))
-    # Blank/zero decoys do not make this a page/offset board; a real,
-    # non-zero value does.
-    if q.get("page", "") not in ("",):
+
+    def zeroish(value: str) -> bool:
+        text = value.strip()
+        return text == "" or (text.isascii() and text.isdigit() and int(text) == 0)
+
+    if not zeroish(q.get("page", "")):
         return None
-    if q.get("pageNumber", "") not in ("",):
+    if not zeroish(q.get("pageNumber", "")):
         return None
-    if q.get("offset", "") not in ("", "0"):
+    if not zeroish(q.get("offset", "")):
         return None
     start = q.get("start", "")
     return int(start) if start.isdigit() else None
@@ -486,9 +508,15 @@ def detect_next_envelope(
     start = _start_offset(url)
     if start is None:
         return None
-    total = envelope_total(payload, rows)
-    if total is None:
+    total_candidates = [
+        total for total in (
+            envelope_total(payload, rows),
+            _top_level_total(payload),
+        ) if total is not None
+    ]
+    if not total_candidates:
         return None
+    total = max(total_candidates)
     next_start = start + len(rows)
     if next_start >= total:
         return None
@@ -640,15 +668,27 @@ def paginate(
     initial_page, initial_offset = page, offset
     raw_seen = 0
     reported_total: int | None = None
-    saw_envelope = False
+    saw_board_total = False
+    start_mode = False
+    pending_start = False
+    # (base start-paged URL, next offset) captured before an invented
+    # page=/offset= is followed; used only if that page comes back wholly
+    # duplicated or empty (#69 review: don't hijack a working pager).
+    start_fallback: tuple[str, int] | None = None
     seen_urls: set[str] = set()
     seen_fps: set[str] = set()
     fetch_log: list[dict[str, Any]] = []
 
     while True:
         if pages >= max_pages:
-            truncated = True
-            complete = False
+            # Hitting the page cap exactly on a covered board is not
+            # truncation; the board's own total says there is no more.
+            if reported_total is not None and len(listings) >= reported_total:
+                complete = True
+                truncated = False
+            else:
+                truncated = True
+                complete = False
             break
         if current:
             if current in seen_urls:
@@ -671,10 +711,17 @@ def paginate(
 
         raw_jobs = extract_job_list(payload)
         raw_seen += len(raw_jobs)
-        env_total = envelope_total(payload, raw_jobs)
-        if env_total is not None:
-            saw_envelope = True
-        page_total = env_total if env_total is not None else _top_level_total(payload)
+        total_candidates = [
+            total for total in (
+                envelope_total(payload, raw_jobs),
+                _top_level_total(payload),
+            ) if total is not None
+        ]
+        page_total = max(total_candidates) if total_candidates else None
+        if page_total is not None and page_total < len(raw_jobs):
+            # A count below the rows already served is not a board total
+            # (page size / facet count); do not let it lower the bar.
+            page_total = None
         if page_total is not None:
             # Keep the largest total seen: a later page that reports a smaller
             # (page-scoped or stale) count must not lower the completeness bar.
@@ -682,6 +729,18 @@ def paginate(
                 page_total if reported_total is None
                 else max(reported_total, page_total)
             )
+            saw_board_total = True
+        # Remember the start-envelope next page before detect_next can
+        # invent page=/offset=; it is only used if that page turns out to be
+        # a duplicate or empty. A working page/offset pager keeps its URL.
+        start_at = _start_offset(current) if current else None
+        if start_at is not None and page_total is not None:
+            env_next = detect_next_envelope(
+                current, payload, raw_jobs, last_count=len(raw_jobs),
+            )
+            fallback_start = _start_offset(env_next) if env_next else None
+            if fallback_start is not None and fallback_start > start_at:
+                start_fallback = (current or "", fallback_start)
         if not raw_jobs and parsed_empty_board(payload):
             empty_board = True
         page_listings = []
@@ -698,8 +757,28 @@ def paginate(
                 continue
             seen_fps.add(fp)
             new_listings.append(item)
+        if pending_start and new_listings:
+            # The start fallback produced fresh rows: this board pages by
+            # `start`, so stop probing invented page=/offset= URLs.
+            start_mode = True
+            pending_start = False
         if page_listings and not new_listings:
             # Whole page was already seen — the "next" URL added nothing.
+            # If detect_next had invented page=/offset= on a start-paged
+            # board, try the remembered start envelope before calling it done.
+            if (start_fallback is not None
+                    and (reported_total is None
+                         or len(listings) < reported_total)):
+                base_url, next_start = start_fallback
+                fallback_url = _set_query(base_url, start=next_start)
+                if fallback_url not in seen_urls and fallback_url != current:
+                    start_fallback = None
+                    pending_start = True
+                    pages += 1  # the duplicate fetch happened; count it
+                    current = fallback_url
+                    payload = None
+                    scheme = "start"
+                    continue
             complete = True
             break
         listings.extend(new_listings)
@@ -719,21 +798,17 @@ def paginate(
         if not current:
             complete = True
             break
-        next_url, found = detect_next(
-            current, payload, page=page, offset=offset,
-            last_count=last_count, page_size=page_size,
-            fetched=len(listings), scheme=scheme,
-        )
-        start_at = _start_offset(current)
-        if found in {"offset", "page"} and start_at is not None and env_total is not None:
-            # detect_next invented offset=/page= on a start-paged board (its
-            # generic full-page fallback fires when the first page reaches
-            # page_size). The board's own total is the paging contract, so
-            # follow `start` instead of sending a param the board ignores.
+        if start_mode and start_at is not None:
             env_next = detect_next_envelope(
                 current, payload, raw_jobs, last_count=last_count,
             )
             next_url, found = env_next, ("start" if env_next else "none")
+        else:
+            next_url, found = detect_next(
+                current, payload, page=page, offset=offset,
+                last_count=last_count, page_size=page_size,
+                fetched=len(listings), scheme=scheme,
+            )
         if found != "none":
             scheme = found
         if not next_url or next_url == current:
@@ -746,6 +821,20 @@ def paginate(
                 # param on a later, larger page.
                 next_url, found = env_next, "start"
                 scheme = found
+                start_mode = True
+        if (last_count == 0 and start_fallback is not None
+                and (reported_total is None or len(listings) < reported_total)):
+            # An empty page after an invented page=/offset= can still be a
+            # start-paged board's real next page; try the envelope once.
+            base_url, next_start = start_fallback
+            fallback_url = _set_query(base_url, start=next_start)
+            if fallback_url not in seen_urls and fallback_url != current:
+                start_fallback = None
+                pending_start = True
+                current = fallback_url
+                payload = None
+                scheme = "start"
+                continue
         if not next_url or next_url == current or last_count == 0:
             complete = True
             break
@@ -764,7 +853,7 @@ def paginate(
     started_mid_board = (
         initial_page > 1
         or initial_offset > 0
-        or (initial_start is not None and initial_start > 0 and saw_envelope)
+        or (initial_start is not None and initial_start > 0 and saw_board_total)
     )
     if complete and not truncated and (
         started_mid_board
@@ -772,7 +861,7 @@ def paginate(
     ):
         truncated = True
         complete = False
-    if scheme == "none" and saw_envelope and initial_start is not None:
+    if scheme == "none" and saw_board_total and initial_start is not None:
         # A one-page envelope board still paged by `start`; report the scheme.
         scheme = "start"
 
@@ -780,8 +869,9 @@ def paginate(
     # their old meaning and stay the expiry rule; `status` is the readable,
     # machine-checked headline.
     #   complete  — clean crawl covering the board, rows captured
-    #   truncated — partial crawl: a cap was hit, it began mid-board, or it
-    #               staged fewer unique listings than the board reported
+    #   truncated — partial crawl: a cap was hit before the board total was
+    #               covered, it began mid-board, or it staged fewer unique
+    #               listings than the board reported
     #   empty     — clean 200 with a parsed, empty job list: every role closed
     #   blocked   — nothing parseable came back (unreadable body, no list key)
     #   captured  — `paginate --input`: a saved page, never the whole board
@@ -842,6 +932,7 @@ def blocked_result(url: str, error: str, max_pages: int = DEFAULT_MAX_PAGES) -> 
             "scheme": "none",
             "maxPages": max_pages,
             "status": "blocked",
+            "rowsFetched": 0,
         },
         "fetchLog": [{
             "timestamp": _now(),
