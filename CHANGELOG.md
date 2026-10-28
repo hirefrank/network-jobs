@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+- `network-jobs update` now passes `--prefer-online` to the npm-global
+  install, so it does not reinstall the previous release from a stale
+  cached packument during the registry propagation window.
+
 ## v1.10.0 — 2026-10-28
 
 ### Fixed

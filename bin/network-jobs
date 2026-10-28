@@ -781,11 +781,11 @@ cmd_update() {
   if network_jobs_is_packaged_install "$ROOT"; then
     if network_jobs_is_npm_global_install "$ROOT"; then
       echo "Updating npm-global install (@hirefrank/network-jobs)…"
-      if command -v npm >/dev/null 2>&1 && npm i -g '@hirefrank/network-jobs@latest'; then
+      if command -v npm >/dev/null 2>&1 && npm i -g '@hirefrank/network-jobs@latest' --prefer-online; then
         echo "Re-running setup…"
         exec "$ROOT/setup" "${setup_args[@]}"
       fi
-      echo "error: npm update failed — run: npm i -g @hirefrank/network-jobs@latest" >&2
+      echo "error: npm update failed — run: npm i -g @hirefrank/network-jobs@latest --prefer-online" >&2
       return 1
     fi
     echo "Updating from GitHub (purging cached suite first)…"
