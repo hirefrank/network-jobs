@@ -617,11 +617,195 @@ class PaginationTests(unittest.TestCase):
         result = paginate("https://x.io/api/jobs", fetch=fake_fetch, max_pages=5, page_size=50)
         pag = result["pagination"]
         self.assertLess(pag["pages"], 5)
-        self.assertTrue(pag["complete"])
-        self.assertFalse(pag["truncated"])
+        # With no board total, a re-served page proves nothing about coverage.
+        self.assertFalse(pag["complete"])
+        self.assertTrue(pag["truncated"])
+        self.assertEqual(pag["status"], "truncated")
         fps = [fingerprint(j) for j in result["listings"]]
         self.assertEqual(len(fps), len(set(fps)))
         self.assertEqual(len(result["listings"]), 60)
+
+
+class PaginationSafetyTests(unittest.TestCase):
+    """#78/#88/#89: link state, no-total duplicate pages, bare-count ambiguity."""
+
+    @staticmethod
+    def _rows(n):
+        return [
+            {"title": f"Engineer {i}", "url": f"https://x.io/jobs/{i}",
+             "location": "NY"}
+            for i in range(n)
+        ]
+
+    @staticmethod
+    def _fetch(builder):
+        def fake_fetch(url):
+            import json as _json
+            from urllib.parse import parse_qsl, urlsplit
+            q = dict(parse_qsl(urlsplit(url).query))
+            body = builder(q)
+            return body, 200, _json.dumps(body).encode()
+        return fake_fetch
+
+    def test_link_paged_offset_reads_link_state(self):
+        from network_jobs.pagination import paginate
+        rows = self._rows(30)
+
+        def build(q):
+            offset = int(q.get("offset", "0"))
+            body = {"jobs": rows[offset:offset + 10], "total": 30}
+            if offset + 10 < 30:
+                body["next"] = f"https://x.io/api/jobs?offset={offset + 10}&limit=10"
+            return body
+
+        result = paginate("https://x.io/api/jobs?offset=0&limit=10",
+                          fetch=self._fetch(build), max_pages=10, page_size=10)
+        pag = result["pagination"]
+        self.assertEqual(len(result["listings"]), 30)
+        self.assertTrue(pag["complete"])
+        self.assertFalse(pag["truncated"])
+        self.assertEqual([e["url"] for e in result["fetchLog"]], [
+            "https://x.io/api/jobs?offset=0&limit=10",
+            "https://x.io/api/jobs?offset=10&limit=10",
+            "https://x.io/api/jobs?offset=20&limit=10",
+        ])
+
+    def test_link_paged_offset_short_of_total_is_truncated(self):
+        from network_jobs.pagination import paginate
+        rows = self._rows(20)
+
+        def build(q):
+            offset = int(q.get("offset", "0"))
+            body = {"jobs": rows[offset:offset + 10], "total": 30}
+            if offset == 0:
+                body["next"] = "https://x.io/api/jobs?offset=10&limit=10"
+            return body
+
+        result = paginate("https://x.io/api/jobs?offset=0&limit=10",
+                          fetch=self._fetch(build), max_pages=10, page_size=10)
+        pag = result["pagination"]
+        self.assertEqual(len(result["listings"]), 20)
+        self.assertFalse(pag["complete"])
+        self.assertTrue(pag["truncated"])
+        self.assertEqual([e["url"] for e in result["fetchLog"]], [
+            "https://x.io/api/jobs?offset=0&limit=10",
+            "https://x.io/api/jobs?offset=10&limit=10",
+            "https://x.io/api/jobs?offset=20&limit=10",
+        ])
+
+    def test_duplicate_page_with_covered_total_is_complete(self):
+        from network_jobs.pagination import paginate
+        rows = self._rows(50)
+        payload = {"jobs": rows, "total": 50,
+                   "next": "https://x.io/api/jobs?page=2"}
+        fetch = self._fetch(lambda q: payload)
+        result = paginate("https://x.io/api/jobs?page=1",
+                          fetch=fetch, max_pages=5, page_size=50)
+        self.assertEqual(len(result["listings"]), 50)
+        self.assertTrue(result["pagination"]["complete"])
+        self.assertFalse(result["pagination"]["truncated"])
+
+    def test_duplicate_page_short_of_total_is_truncated(self):
+        from network_jobs.pagination import paginate
+        rows = self._rows(10)
+        payload = {"jobs": rows, "total": 30,
+                   "next": "https://x.io/api/jobs?page=2"}
+        fetch = self._fetch(lambda q: payload)
+        result = paginate("https://x.io/api/jobs?page=1",
+                          fetch=fetch, max_pages=5, page_size=10)
+        self.assertEqual(len(result["listings"]), 10)
+        self.assertFalse(result["pagination"]["complete"])
+        self.assertTrue(result["pagination"]["truncated"])
+
+    def test_short_final_page_without_total_still_completes(self):
+        from network_jobs.pagination import paginate
+        rows = self._rows(25)
+
+        def build(q):
+            page = int(q.get("page", "1"))
+            return {"jobs": rows[(page - 1) * 10:page * 10]}
+
+        result = paginate("https://x.io/api/jobs?page=1",
+                          fetch=self._fetch(build), max_pages=10, page_size=10)
+        self.assertEqual(len(result["listings"]), 25)
+        self.assertTrue(result["pagination"]["complete"])
+        self.assertFalse(result["pagination"]["truncated"])
+
+    def test_self_link_without_total_is_truncated(self):
+        from network_jobs.pagination import paginate
+        rows = self._rows(10)
+        payload = {"jobs": rows, "next": "https://x.io/api/jobs?page=1"}
+        fetch = self._fetch(lambda q: payload)
+        result = paginate("https://x.io/api/jobs?page=1",
+                          fetch=fetch, max_pages=5, page_size=10)
+        self.assertEqual(len(result["listings"]), 10)
+        self.assertFalse(result["pagination"]["complete"])
+        self.assertTrue(result["pagination"]["truncated"])
+
+    def test_lone_page_sized_bare_count_is_truncated(self):
+        from network_jobs.pagination import paginate
+        rows = self._rows(100)
+
+        def build(q):
+            start = int(q.get("start", "0"))
+            return {"data": {"positions": rows[start:start + 10],
+                             "count": 10}}
+
+        result = paginate("https://x.io/api/jobs?start=0",
+                          fetch=self._fetch(build), max_pages=10, page_size=50)
+        pag = result["pagination"]
+        self.assertEqual(len(result["listings"]), 10)
+        self.assertFalse(pag["complete"])
+        self.assertTrue(pag["truncated"])
+        self.assertEqual(pag["status"], "truncated")
+        self.assertNotIn("reportedTotal", pag)
+
+    def test_empty_board_with_zero_bare_count_is_empty_not_truncated(self):
+        from network_jobs.pagination import paginate
+        payload = {"jobs": [], "count": 0}
+        fetch = self._fetch(lambda q: payload)
+        result = paginate("https://x.io/api/jobs?page=1",
+                          fetch=fetch, max_pages=5, page_size=50)
+        pag = result["pagination"]
+        self.assertEqual(result["listings"], [])
+        self.assertTrue(pag["complete"])
+        self.assertFalse(pag["truncated"])
+        self.assertEqual(pag["status"], "empty")
+
+    def test_explicit_total_equal_to_page_rows_is_complete(self):
+        from network_jobs.pagination import paginate
+        rows = self._rows(10)
+
+        def build(q):
+            start = int(q.get("start", "0"))
+            return {"data": {"positions": rows[start:start + 10],
+                             "total": 10}}
+
+        result = paginate("https://x.io/api/jobs?start=0",
+                          fetch=self._fetch(build), max_pages=10, page_size=50)
+        pag = result["pagination"]
+        self.assertEqual(len(result["listings"]), 10)
+        self.assertTrue(pag["complete"])
+        self.assertFalse(pag["truncated"])
+        self.assertEqual(pag["reportedTotal"], 10)
+
+    def test_bare_count_with_a_working_page_link_still_completes(self):
+        from network_jobs.pagination import paginate
+        rows = self._rows(20)
+
+        def build(q):
+            page = int(q.get("page", "1"))
+            body = {"jobs": rows[(page - 1) * 10:page * 10], "count": 10}
+            if page == 1:
+                body["next"] = "https://x.io/api/jobs?page=2"
+            return body
+
+        result = paginate("https://x.io/api/jobs?page=1",
+                          fetch=self._fetch(build), max_pages=10, page_size=10)
+        pag = result["pagination"]
+        self.assertEqual(len(result["listings"]), 20)
+        self.assertTrue(pag["complete"])
+        self.assertFalse(pag["truncated"])
 
 
 class EnvelopeOffsetPaginationTests(unittest.TestCase):

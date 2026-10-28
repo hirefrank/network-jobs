@@ -53,6 +53,16 @@
   `?location=US&location=CA` became `?location=CA` on page 2 and the
   filter changed mid-crawl. The target key is replaced once in place;
   other repeated/blank pairs and the fragment are kept (#77).
+- A no-total crawl that re-serves a page (duplicate-only or a repeated
+  URL) now records `truncated` / `complete: false` instead of claiming
+  the board was covered; a covered total still completes (#88).
+- A lone bare `count` equal to the first page's rows is treated as a
+  possible page size, not proof of coverage. It can still guide paging,
+  but a one-page crawl is `truncated`; explicit totals are unchanged
+  (#89).
+- A link-paged offset board reads `offset`/`page` from the followed
+  `next` URL before the next request. A later page with no link no
+  longer rebuilds from a stale offset and stops short (#78).
 - `paginate` now finds a board total one level deeper than the rows
   (Eightfold's `data.positions` plus `data.meta.total`) instead of only
   beside the list or at the top level. The total feeds `reportedTotal` and

@@ -474,21 +474,35 @@ def _numeric_total(value: Any) -> int | None:
     return None
 
 
-def _count_value(obj: Any) -> int | None:
-    """The first numeric total on `obj`, or None. Booleans are not counts.
+def _explicit_count_value(obj: Any) -> int | None:
+    """The first explicit total on `obj`, or None.
 
-    Digit strings are accepted because a few APIs send `"count": "100"`.
-    A bare `count` sorts last: it is the most ambiguous key (page size, facet
-    count, row total), so an explicit `total`/`total_results` wins when both
-    are present.
+    Explicit means `total`/`totalFound`/`totalCount`/`total_results`, not a
+    bare `count`. A count can be a page size or facet count; keeping it out of
+    this helper lets the caller treat a lone page-sized count as ambiguous.
     """
     if not isinstance(obj, dict):
         return None
-    for key in TOTAL_KEYS:
+    for key in ("total", "totalFound", "totalCount", "total_results"):
         total = _numeric_total(obj.get(key))
         if total is not None:
             return total
     return None
+
+
+def _count_value(obj: Any) -> int | None:
+    """The first numeric total on `obj`, or None. Booleans are not counts.
+
+    Digit strings are accepted because a few APIs send `"count": "100"`.
+    An explicit total sorts first; a bare `count` is the last resort because
+    it is the most ambiguous key (page size, facet count, row total).
+    """
+    if not isinstance(obj, dict):
+        return None
+    total = _explicit_count_value(obj)
+    if total is not None:
+        return total
+    return _numeric_total(obj.get("count"))
 
 
 def _meta_total(obj: Any) -> int | None:
@@ -502,13 +516,11 @@ def _meta_total(obj: Any) -> int | None:
     return None
 
 
-def _top_level_total(payload: Any) -> int | None:
-    """A board total on the payload or its meta block (detect_next's rule).
+def _explicit_top_level_total(payload: Any) -> int | None:
+    """The largest explicit total on the payload or its meta block.
 
-    Explicit totals anywhere beat a bare `count`, and the largest explicit
-    total wins across the payload/meta. A `count` on the payload is the last
-    resort because it is frequently a page size or facet count. This also
-    keeps a digit-string `count` from shadowing a real `meta.total`.
+    A bare `count` is deliberately excluded; use `_top_level_total` when the
+    paging heuristic needs every available hint.
     """
     if not isinstance(payload, dict):
         return None
@@ -524,9 +536,21 @@ def _top_level_total(payload: Any) -> int | None:
                 total = _numeric_total(nested.get(name))
                 if total is not None:
                     explicit.append(total)
-    if explicit:
-        return max(explicit)
-    return _numeric_total(payload.get("count"))
+    return max(explicit) if explicit else None
+
+
+def _top_level_total(payload: Any) -> int | None:
+    """A board total on the payload or its meta block (detect_next's rule).
+
+    Explicit totals anywhere beat a bare `count`, and the largest explicit
+    total wins across the payload/meta. A `count` on the payload is the last
+    resort because it is frequently a page size or facet count. This also
+    keeps a digit-string `count` from shadowing a real `meta.total`.
+    """
+    total = _explicit_top_level_total(payload)
+    if total is not None:
+        return total
+    return _numeric_total(payload.get("count")) if isinstance(payload, dict) else None
 
 
 def _rows_envelope(payload: Any, rows: list[Any]) -> dict[str, Any] | None:
@@ -588,6 +612,40 @@ def board_total(payload: Any, rows: list[Any]) -> int | None:
                 if total is not None:
                     candidates.append(total)
     top = _top_level_total(payload)
+    if top is not None:
+        candidates.append(top)
+    return max(candidates) if candidates else None
+
+
+def explicit_board_total(payload: Any, rows: list[Any]) -> int | None:
+    """The board total only when an explicit total key supplied it.
+
+    Mirrors `board_total`'s envelope/container/meta/empty-page coverage but
+    ignores a bare `count`. `paginate` uses this to tell a real total from a
+    lone `count` that may just be the page size (#89): a bare count equal to
+    the rows served cannot prove coverage.
+    """
+    candidates: list[int] = []
+    container = _rows_envelope(payload, rows)
+    if container is not None:
+        total = _explicit_count_value(container)
+        if total is not None:
+            candidates.append(total)
+        for key in ("meta", "pagination"):
+            total = _meta_total(container.get(key))
+            if total is not None:
+                candidates.append(total)
+    if not rows:
+        empty = _empty_rows_envelope(payload)
+        if empty is not None:
+            total = _explicit_count_value(empty)
+            if total is not None:
+                candidates.append(total)
+            for key in ("meta", "pagination"):
+                total = _meta_total(empty.get(key))
+                if total is not None:
+                    candidates.append(total)
+    top = _explicit_top_level_total(payload)
     if top is not None:
         candidates.append(top)
     return max(candidates) if candidates else None
@@ -856,7 +914,11 @@ def paginate(
     `complete` means the crawl covered the board: it began at the first
     page/row, hit no cap, and fetched at least the board's reported total when
     one was visible. Anything less is `truncated`, because ingest uses
-    `complete` to expire roles the crawl did not see.
+    `complete` to expire roles the crawl did not see. A no-total board that
+    re-serves a page (duplicate-only or a repeated URL) is truncated, never
+    complete (#88). A lone bare `count` equal to the first page's rows is
+    treated as a possible page size, so a one-page crawl is truncated unless
+    an explicit total or a later page resolves it (#89).
 
     `capture=True` marks a `paginate --input` run: the rows came from a single
     page a human saved, so the run can never prove the board is complete. It
@@ -912,6 +974,7 @@ def paginate(
     raw_seen = 0
     reported_total: int | None = None
     saw_board_total = False
+    ambiguous_bare_count = False
     start_mode = False
     pending_start = False
     # (base start-paged URL, next offset) captured before an invented
@@ -947,7 +1010,15 @@ def paginate(
             # so the dedup key includes it; GET dedup is unchanged.
             seen_key = f"{current}#{offset}" if post_mode else current
             if seen_key in seen_urls:
-                complete = True
+                # Re-fetching a URL cannot prove coverage. With no total (or
+                # a total not reached), this is a partial crawl (#88).
+                if reported_total is not None and len(listings) >= reported_total:
+                    complete = True
+                elif listings:
+                    complete = False
+                    truncated = True
+                else:
+                    complete = True
                 break
             seen_urls.add(seen_key)
             payload, status, body = fetch(current)
@@ -966,18 +1037,30 @@ def paginate(
 
         raw_jobs = extract_job_list(payload)
         raw_seen += len(raw_jobs)
+        explicit_total = explicit_board_total(payload, raw_jobs)
         page_total = board_total(payload, raw_jobs)
         if page_total is not None and page_total < len(raw_jobs):
             # A count below the rows already served is not a board total
             # (page size / facet count); do not let it lower the bar.
             page_total = None
         if page_total is not None:
-            # Keep the largest total seen: a later page that reports a smaller
-            # (page-scoped or stale) count must not lower the completeness bar.
-            reported_total = (
-                page_total if reported_total is None
-                else max(reported_total, page_total)
-            )
+            if (reported_total is None and explicit_total is None
+                    and raw_jobs and page_total <= len(raw_jobs)):
+                # A lone bare `count` equal to the rows served may be the
+                # page size, not the board total (#89). Keep it as a paging
+                # hint for detect_next/start, but never use it as coverage
+                # proof; a one-page crawl ends truncated, and a later page
+                # or explicit total can resolve it.
+                ambiguous_bare_count = True
+            else:
+                if explicit_total is not None or page_total > len(raw_jobs):
+                    ambiguous_bare_count = False
+                # Keep the largest total seen: a later page that reports a
+                # smaller (page-scoped or stale) count must not lower the bar.
+                reported_total = (
+                    page_total if reported_total is None
+                    else max(reported_total, page_total)
+                )
             saw_board_total = True
         # Remember the start-envelope next page before detect_next can
         # invent page=/offset=; it is only used if that page turns out to be
@@ -1036,7 +1119,14 @@ def paginate(
                     payload = None
                     scheme = "start"
                     continue
-            complete = True
+            # A duplicate-only page proves the board is re-serving rows,
+            # not that the crawl covered it. It is complete only when a
+            # known total is already covered (#88).
+            if reported_total is not None and len(listings) >= reported_total:
+                complete = True
+            else:
+                complete = False
+                truncated = True
             break
         listings.extend(new_listings)
         pages += 1
@@ -1112,13 +1202,62 @@ def paginate(
                 payload = None
                 scheme = "start"
                 continue
-        if not next_url or next_url == current or last_count == 0:
-            complete = True
+        if last_count == 0:
+            if reported_total is not None:
+                if len(listings) >= reported_total:
+                    complete = True
+                else:
+                    complete = False
+                    truncated = True
+            else:
+                # An empty terminal page with no total is the normal end for
+                # a board that does not expose a count; like a short page, it
+                # is complete. Duplicate/repeated pages are handled above.
+                complete = True
             break
+        if not next_url or next_url == current:
+            if reported_total is not None:
+                if len(listings) >= reported_total:
+                    complete = True
+                else:
+                    complete = False
+                    truncated = True
+            elif next_url == current and listings:
+                # A self-link after progress is a repeated page, not an end.
+                complete = False
+                truncated = True
+            else:
+                # A short page with no total is a normal end (the board may
+                # genuinely be one page); this remains complete.
+                complete = True
+            break
+        previous_offset, previous_page = offset, page
         if found == "offset":
             offset += last_count
         if found == "page":
             page += 1
+        # A link can carry the pager state itself (`?offset=10`, `?page=2`).
+        # Without syncing it, a later page with no link rebuilds from the
+        # initial offset (usually 0), re-requests a seen page, and stops
+        # short (#78). Only accept a plausible next step: the exact local
+        # state, offset + rows just served, or offset + page size. A
+        # filter-like constant offset/page is ignored.
+        linked = dict(parse_qsl(urlsplit(next_url).query, keep_blank_values=True))
+        linked_offset = linked.get("offset", "").strip()
+        if linked_offset.isdigit():
+            candidate = int(linked_offset)
+            # Advance, but not beyond one page's worth. A constant filter
+            # offset (e.g. offset=2020) is not a pager.
+            if previous_offset < candidate <= previous_offset + max(page_size, last_count, 1):
+                offset = candidate
+        linked_page = (
+            linked.get("page", "").strip()
+            or linked.get("pageNumber", "").strip()
+        )
+        if linked_page.isdigit():
+            candidate = int(linked_page)
+            if previous_page < candidate <= previous_page + 1:
+                page = candidate
         current = next_url
         payload = None
 
@@ -1136,6 +1275,11 @@ def paginate(
         started_mid_board
         or (reported_total is not None and len(listings) < reported_total)
     ):
+        truncated = True
+        complete = False
+    if complete and not truncated and ambiguous_bare_count and pages <= 1:
+        # The only total was a bare count equal to the first page's rows.
+        # It may have been the page size; one page cannot prove the board.
         truncated = True
         complete = False
     if scheme == "none" and saw_board_total and initial_start is not None:
