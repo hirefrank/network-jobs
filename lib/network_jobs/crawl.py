@@ -90,6 +90,12 @@ def stamp_company_crawl(
             "complete": pagination.get("complete"),
             "truncated": pagination.get("truncated"),
         }
+        # Additive coverage fields (#79): only stamped when present, so
+        # older pagination dicts keep the old three-field shape and older
+        # company records (without these keys) stay readable.
+        for key in ("status", "reportedTotal", "rowsFetched", "deduped"):
+            if pagination.get(key) is not None:
+                row["lastPagination"][key] = pagination.get(key)
     companies_path.parent.mkdir(parents=True, exist_ok=True)
     companies_path.write_text(json.dumps(companies, indent=2, ensure_ascii=False) + "\n")
     status["lastCrawl"] = row["lastCrawl"]

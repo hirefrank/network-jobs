@@ -3163,6 +3163,96 @@ class CompaniesRefreshTests(unittest.TestCase):
         self.assertEqual([r["slug"] for r in results], ["acme"])
 
 
+class CrawlCoverageTests(unittest.TestCase):
+    """#79: lastPagination carries status/coverage, old records stay readable."""
+
+    def test_truncated_stamp_stores_coverage_fields(self):
+        from network_jobs.crawl import stamp_company_crawl
+
+        tmp = Path(tempfile.mkdtemp(prefix="nj-cov-"))
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        companies = tmp / "companies.json"
+        companies.write_text("[]\n")
+        stamp_company_crawl(
+            companies, "acme", [{"title": "PM", "url": "https://x/1", "externalId": "1"}],
+            pagination={"pages": 2, "complete": False, "truncated": True,
+                        "status": "truncated", "reportedTotal": 100,
+                        "rowsFetched": 20, "deduped": 2},
+            company_name="Acme",
+        )
+        lp = json.loads(companies.read_text())[0]["lastPagination"]
+        self.assertEqual(lp["status"], "truncated")
+        self.assertEqual(lp["reportedTotal"], 100)
+        self.assertEqual(lp["rowsFetched"], 20)
+        self.assertEqual(lp["deduped"], 2)
+
+    def test_stamp_without_coverage_adds_no_none_fields(self):
+        from network_jobs.crawl import stamp_company_crawl
+
+        tmp = Path(tempfile.mkdtemp(prefix="nj-cov-old-"))
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        companies = tmp / "companies.json"
+        companies.write_text("[]\n")
+        stamp_company_crawl(
+            companies, "acme", [{"title": "PM", "url": "https://x/1", "externalId": "1"}],
+            pagination={"pages": 1, "complete": True, "truncated": False},
+            company_name="Acme",
+        )
+        lp = json.loads(companies.read_text())[0]["lastPagination"]
+        self.assertEqual(lp, {"pages": 1, "complete": True, "truncated": False})
+
+    def test_companies_prints_coverage_for_truncated_and_reads_old_records(self):
+        import io
+        from contextlib import redirect_stdout
+
+        tmp = Path(tempfile.mkdtemp(prefix="nj-cov-comp-"))
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        (tmp / "companies").mkdir()
+        (tmp / "companies" / "companies.json").write_text(json.dumps([
+            {"name": "OldCo", "normalized": "oldco", "slug": "oldco",
+             "domain": "", "connectionCount": 1, "people": []},
+            {"name": "TruncCo", "normalized": "truncco", "slug": "truncco",
+             "domain": "", "connectionCount": 1, "people": [],
+             "lastCrawl": "2026-09-01T00:00:00Z",
+             "lastPagination": {"pages": 2, "complete": False, "truncated": True,
+                                "status": "truncated", "reportedTotal": 100,
+                                "rowsFetched": 20}},
+        ]) + "\n")
+        out = io.StringIO()
+        with redirect_stdout(out):
+            rc = helper_main(["companies", "--data", str(tmp)])
+        self.assertEqual(rc, 0)
+        text = out.getvalue()
+        self.assertIn("OldCo", text)
+        self.assertIn("coverage: 20 of 100 (truncated)", text)
+
+    def test_refresh_result_carries_last_pagination(self):
+        from network_jobs.cli import _do_refresh
+
+        tmp = Path(tempfile.mkdtemp(prefix="nj-cov-ref-"))
+        self.addCleanup(lambda: shutil.rmtree(tmp, ignore_errors=True))
+        (tmp / "companies").mkdir()
+        (tmp / "companies" / "companies.json").write_text(json.dumps([
+            {"name": "Acme", "normalized": "acme", "slug": "acme",
+             "domain": "acme.com", "connectionCount": 5, "people": [],
+             "lastCrawl": "2026-09-01T00:00:00Z",
+             "listingSetHash": "stale-hash",
+             "jobsUrl": "https://jobs.example.com/acme.json"},
+        ]) + "\n")
+        (tmp / "preferences.json").write_text(json.dumps({}) + "\n")
+        payload = {"jobs": [{"title": "Senior Backend Engineer", "department": "Engineering",
+                            "location": "Remote", "url": "https://jobs.example.com/acme/1",
+                            "postedAt": "2026-09-19"}]}
+        body = json.dumps(payload).encode()
+        results = _do_refresh(tmp, company="acme", limit=5,
+                              fetch=lambda url: (payload, 200, body),
+                              today="2026-09-20")
+        self.assertEqual(results[0]["lastPagination"]["status"], "complete")
+        self.assertEqual(results[0]["lastPagination"]["rowsFetched"], 1)
+        acme = json.loads((tmp / "companies" / "companies.json").read_text())[0]
+        self.assertEqual(acme["lastPagination"]["status"], "complete")
+
+
 class FetchDescriptionsTests(unittest.TestCase):
     HTML = ("<html><head><title>Jobs</title><style>x{}</style></head><body>"
             "<h1>Senior Product Manager, Payments</h1>"

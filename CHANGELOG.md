@@ -90,6 +90,11 @@
   `total` says rows remain, maps `externalPath` / `locationsText` /
   `postedOn`, and sends POST through the same retry/backoff as GET.
   A POST board with no total ends as `truncated`, never `complete`.
+- `crawl-state` now stamps `status`, `reportedTotal`, `rowsFetched`,
+  and `deduped` into `companies.json` `lastPagination` when present
+  (#79), and `companies` / `refresh` print a coverage line for
+  truncated/blocked boards (e.g. `coverage: 20 of 100 (truncated)`).
+  Older company records without those fields stay readable.
 
 ## v1.9.0 — 2026-10-22
 

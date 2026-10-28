@@ -705,7 +705,18 @@ def cmd_companies(args: argparse.Namespace) -> int:
         line = f"• {name} — conn={conn} — crawl={crawl}"
         if age:
             line += f" ({age})"
-        print(line + f" — hash={digest} — {jobs_url}")
+        line += f" — hash={digest} — {jobs_url}"
+        # #79: surface coverage only when the last crawl was partial, so
+        # complete boards stay quiet. Older records without lastPagination
+        # (or without these keys) simply print no coverage line.
+        lp = c.get("lastPagination") if isinstance(c.get("lastPagination"), dict) else {}
+        if lp.get("truncated") or lp.get("status") in ("truncated", "blocked"):
+            status = lp.get("status") or "truncated"
+            if lp.get("reportedTotal") is not None and lp.get("rowsFetched") is not None:
+                line += f" — coverage: {lp.get('rowsFetched')} of {lp.get('reportedTotal')} ({status})"
+            else:
+                line += f" — coverage: {status}"
+        print(line)
     return 0
 
 
@@ -769,6 +780,16 @@ def _do_refresh(
             )
             write_pagination(triage, pres, company=name)
             listings = pres.get("listings") or []
+            # #79: carry the crawl's coverage through the refresh result so
+            # cmd_refresh can warn about partial boards without re-reading
+            # pagination.json. Only fields present on the pagination dict
+            # are carried; older/custom fetchers simply carry fewer.
+            _pag = pres.get("pagination") if isinstance(pres.get("pagination"), dict) else {}
+            _coverage = {
+                key: _pag.get(key)
+                for key in ("status", "reportedTotal", "rowsFetched", "deduped", "truncated", "complete")
+                if _pag.get(key) is not None
+            }
             listings_path = triage / "index" / "listings.json"
             status = _do_crawl_state(
                 data, triage, listings_path, companies_path,
@@ -782,6 +803,7 @@ def _do_refresh(
                 results.append({
                     "company": name, "slug": slug, "status": "unchanged",
                     "listings": len(listings),
+                    "lastPagination": _coverage,
                 })
             else:
                 mres = _do_match_prefs(triage, listings, prefs, resume_text, exclude, name, False,
@@ -794,6 +816,7 @@ def _do_refresh(
                     "company": name, "slug": slug, "status": "changed",
                     "listings": len(listings), "matches": mres["nMatches"],
                     "triage": str(triage),
+                    "lastPagination": _coverage,
                 })
         except Exception as exc:  # noqa: BLE001 — one bad board must not kill the run
             results.append({
@@ -823,10 +846,19 @@ def cmd_refresh(args: argparse.Namespace) -> int:
         return 0
     for r in results:
         status = r["status"]
+        # #79: warn about a partial crawl on the refresh line itself.
+        _lp = r.get("lastPagination") if isinstance(r.get("lastPagination"), dict) else {}
+        _cov = ""
+        if _lp.get("truncated") or _lp.get("status") in ("truncated", "blocked"):
+            _st = _lp.get("status") or "truncated"
+            if _lp.get("reportedTotal") is not None and _lp.get("rowsFetched") is not None:
+                _cov = f" — coverage: {_lp.get('rowsFetched')} of {_lp.get('reportedTotal')} ({_st})"
+            else:
+                _cov = f" — coverage: {_st}"
         if status == "unchanged":
-            print(f"• {r['company']}: unchanged ({r['listings']} listings)")
+            print(f"• {r['company']}: unchanged ({r['listings']} listings){_cov}")
         elif status == "changed":
-            print(f"• {r['company']}: {r['matches']} of {r['listings']} match prefs → staged at {r['triage']}")
+            print(f"• {r['company']}: {r['matches']} of {r['listings']} match prefs → staged at {r['triage']}{_cov}")
         else:
             print(f"• {r['company']}: ERROR {r.get('error')}")
     return 0
