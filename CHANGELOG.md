@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v1.10.0 — 2026-10-28
+
 ### Fixed
 - `careers-discover` called Eightfold-style boards (NVIDIA, UKG) **complete
   after one page**, so a later `jobs-ingest` could expire every role the crawl
