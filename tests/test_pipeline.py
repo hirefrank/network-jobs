@@ -6967,7 +6967,14 @@ class SetupNextStepsTests(unittest.TestCase):
         home.mkdir()
 
         # ~/.local/bin is deliberately missing from PATH: the first-run case.
-        proc = self._run(home, os.environ["PATH"])
+        # Drop any PATH entry that already exposes a `network-jobs` binary so
+        # setup cannot decide the CLI is "already installed" on this machine.
+        path_entries = []
+        for entry in os.environ["PATH"].split(os.pathsep):
+            if not entry or Path(entry, "network-jobs").exists():
+                continue
+            path_entries.append(entry)
+        proc = self._run(home, os.pathsep.join(path_entries))
 
         self.assertEqual(proc.returncode, 0, proc.stderr)
         launcher = home / ".local" / "bin" / "network-jobs"
