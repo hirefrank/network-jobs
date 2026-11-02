@@ -30,7 +30,9 @@ SUFFIX_RE = re.compile(
     r"\b(inc|incorporated|corp|corporation|llc|ltd|limited|llp|lp|plc|co|company|group|holdings|worldwide|international|global|technologies|technology|solutions|services)\b",
     re.I,
 )
-PUNCT_RE = re.compile(r"[.,/#!$%^&*;:{}=\-_`~()•]")
+# \x60 is a literal backtick. A raw backtick here breaks macOS /bin/bash 3.2,
+# which scans this heredoc inside $( ... ) as shell text (unmatched backtick).
+PUNCT_RE = re.compile(r"[.,/#!$%^&*;:{}=\-_\x60~()•]")
 
 def basic_normalize(s: str) -> str:
     s = s.lower()
