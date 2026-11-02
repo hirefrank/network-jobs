@@ -6416,7 +6416,7 @@ class ConsumerCliTests(unittest.TestCase):
         (bin_dir / "network-jobs").symlink_to("../pkg/bin/network-jobs")
         proc = self._run([str(bin_dir / "network-jobs"), "which"])
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn(f"suite={tmp}/node_modules/pkg", proc.stdout)
+        self.assertIn(f"suite={tmp.resolve()}/node_modules/pkg", proc.stdout)
 
     def test_import_is_quiet(self):
         # parse-linkedin.sh prints one summary line; detail goes to the log file.
@@ -6665,7 +6665,7 @@ class FetchPackTests(unittest.TestCase):
                     pack, dest = pack_mod.fetch_pack(f"{url}/pack.json",
                                                     data_dir=data)
                     self.assertEqual(pack["label"], "Test Owner")
-                    self.assertEqual(dest, Path(data) / "packs" / "test-owner.json")
+                    self.assertEqual(dest, Path(data).resolve() / "packs" / "test-owner.json")
                     self.assertTrue(dest.is_file())
                     saved = json.loads(dest.read_text())
                     self.assertEqual(saved["totalConnections"], 4)
