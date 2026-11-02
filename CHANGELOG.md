@@ -2,7 +2,12 @@
 
 ## Unreleased
 
+## v1.10.1 — 2026-11-02
+
 ### Fixed
+- `stage-company.sh` now parses under macOS `/bin/bash` 3.2 by spelling the
+  backtick in the punctuation regex as `\x60` (the raw backtick was scanned
+  as an unmatched quote inside the `$(...)` command substitution).
 - `network-jobs update` now passes `--prefer-online` to the npm-global
   install, so it does not reinstall the previous release from a stale
   cached packument during the registry propagation window.
